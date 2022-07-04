@@ -6,9 +6,8 @@ Collect videos from popular subreddits
  ```python
  main("<subreddit>","<period>")
  ```
- </br>
  
- ### Example:
+### Example:
  ```python
  main("TikTokCringe","day")
  ```
