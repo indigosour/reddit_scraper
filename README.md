@@ -1,8 +1,8 @@
 # Reddit Video Scraper
 ### Collect videos from popular subreddits
- </br>
+</br>
 
- ### Run with:
+### Run with:
  ```python
  main("<subreddit>","<period>")
  ```
