@@ -133,3 +133,5 @@ scratch.py
 ffmpeg.exe
 
 storage/
+
+reddit_video_download.py
