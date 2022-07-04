@@ -1,5 +1,5 @@
 # Reddit Video Scraper
-### Collect videos from popular subreddits
+Collect videos from popular subreddits
 </br>
 
 ### Run with:
