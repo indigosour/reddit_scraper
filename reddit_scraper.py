@@ -32,10 +32,9 @@ def get_reddit_list(sub,period):
     return postlist
 
 # Check for videos and collect list
-
-def get_mp4_urllist(sub,period):
+def get_video_posts(sub,period):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    mp4_urllist = []
+    video_urllist = []
     #sub = 'funny'
     #period = 'day'
     for reddit_url in get_reddit_list(f'{sub}',f'{period}'):
@@ -46,16 +45,15 @@ def get_mp4_urllist(sub,period):
                 json_url = reddit_url["permalink"] + '.json'
             json_response = requests.get(json_url, 
                             headers= headers)
-            if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True:
+            if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
                 json_urllist = {
                     "id": json_response.json()[0]['data']['children'][0]['data']['id'],
                     "permalink": reddit_url["permalink"],
                     }
-                mp4_urllist.append(json_urllist)
+                video_urllist.append(json_urllist)
             elif json_response.status_code != 200:
                 print("Error Detected, check the URL!!!")
-
-    return mp4_urllist
+    return video_urllist
 
 
 # Download MP4 - v.reddit.it
@@ -70,7 +68,7 @@ def main(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
-    playlist = get_reddit_list(f'{sub}',f'{period}')
+    playlist = get_video_posts(f'{sub}',f'{period}')
     uuid_value = str(uuid.uuid4())
     parent_dir = working_dir
     path = os.path.join(parent_dir, uuid_value)
@@ -80,8 +78,8 @@ def main(sub,period):
         print (post["permalink"])
         download_video(post["permalink"],path)
 
-    #filenames = glob.glob(f'/home/john/code_repo/reddit_scraper/storage/{uuid_value}/*.mp4')
-    #return filenames
+    filenames = glob.glob(f'{working_dir}{uuid_value}/*.mp4')
+    return filenames
 
 # subprocess.run(["cat", "*.mp4","|","ffmpeg","-i","pipe:","-c:a","copy","-c:v","copy all.mp4"])
 # cat *.mp4  | ffmpeg  -i pipe: -c:a copy -c:v copy all.mp4
