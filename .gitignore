@@ -133,5 +133,6 @@ scratch.py
 ffmpeg.exe
 
 storage/
+redvid_temp/
 
 reddit_video_download.py
