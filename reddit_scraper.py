@@ -5,6 +5,8 @@ import glob
 from redvid import Downloader
 import ffmpeg
 import requests
+import os
+from datetime import date
 
 reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
@@ -68,6 +70,7 @@ def main(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
+    today = date.today()
     playlist = get_video_posts(f'{sub}',f'{period}')
     uuid_value = str(uuid.uuid4())
     parent_dir = working_dir
@@ -78,8 +81,17 @@ def main(sub,period):
         print (post["permalink"])
         download_video(post["permalink"],path)
 
-    filenames = glob.glob(f'{working_dir}{uuid_value}/*.mp4')
-    return filenames
+    print("Files downloaded successfully")
 
-# subprocess.run(["cat", "*.mp4","|","ffmpeg","-i","pipe:","-c:a","copy","-c:v","copy all.mp4"])
-# cat *.mp4  | ffmpeg  -i pipe: -c:a copy -c:v copy all.mp4
+    with open("output.txt", "w") as a:
+        for path, subdirs, files in os.walk(f'{path}'):
+            for filename in files:
+                f = os.path.join(path, filename)
+                a.write(f'files {f}' + os.linesep) 
+
+    print("Merging files now...")
+    
+    # Merging all videos together
+    ffmpeg.input('output.txt', f='concat', safe=0).output(f'{sub}_{period}_{date.isoformat(today)}.mp4').run()
+
+    print("Done! Enjoy your content!")
