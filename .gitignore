@@ -138,3 +138,5 @@ redvid_temp/
 reddit_video_download.py
 stream.py
 web.py
+output.txt
+*.mp4
