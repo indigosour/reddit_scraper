@@ -5,12 +5,24 @@ import glob
 from redvid import Downloader
 import ffmpeg
 import requests
-import os
 from datetime import date
+
+#Peertube
+from __future__ import print_function
+import time
+import peertube
+from peertube.rest import ApiException
+from pprint import pprint
 
 reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
+
+configuration = peertube.Configuration(
+    host = "https://tubelrone.com/api/v1"
+)
+configuration.access_token = 'd3a24a4116a73a8b123cdbc9e232de21a290ded5'
+
 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage/"
@@ -50,6 +62,7 @@ def get_video_posts(sub,period):
             if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
                 json_urllist = {
                     "id": json_response.json()[0]['data']['children'][0]['data']['id'],
+                    "title": json_response.json()[0]['data']['children'][0]['data']['title'],
                     "permalink": reddit_url["permalink"],
                     }
                 video_urllist.append(json_urllist)
@@ -65,12 +78,45 @@ def download_video(url,path):
     reddit.path = path
     reddit.download()
 
+
+def upload_video(video_path):
+    with peertube.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = peertube.VideoApi(api_client)
+
+    videofile = video_path # file | Video file
+    
+    channel_id = 56 # int | Channel id that will contain this video
+    name = 'name_example' # str | Video name
+    thumbnailfile = '/path/to/file' # file | Video thumbnail file (optional)
+    previewfile = '/path/to/file' # file | Video preview file (optional)
+    privacy = peertube.VideoPrivacySet() # VideoPrivacySet |  (optional)
+    category = 56 # int | Video category (optional)
+    licence = 'licence_example' # str | Video licence (optional)
+    language = 56 # int | Video language (optional)
+    description = 'description_example' # str | Video description (optional)
+    wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
+    support = 'support_example' # str | A text tell the audience how to support the video creator (optional)
+    nsfw = True # bool | Whether or not this video contains sensitive content (optional)
+    tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
+    comments_enabled = True # bool | Enable or disable comments for this video (optional)
+    download_enabled = True # bool | Enable or disable downloading for this video (optional)
+    originally_published_at = '2013-10-20T19:20:30+01:00' # datetime | Date when the content was originally published (optional)
+    schedule_update = peertube.VideoScheduledUpdate() # VideoScheduledUpdate |  (optional)
+
+    try:
+        # Upload a video
+        api_response = api_instance.videos_upload_post(videofile, channel_id, name, thumbnailfile=thumbnailfile, previewfile=previewfile, privacy=privacy, category=category, licence=licence, language=language, description=description, wait_transcoding=wait_transcoding, support=support, nsfw=nsfw, tags=tags, comments_enabled=comments_enabled, download_enabled=download_enabled, originally_published_at=originally_published_at, schedule_update=schedule_update)
+        pprint(api_response)
+    except ApiException as e:
+        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+
+
 # Input subreddit and period of time to create working directory and collect mp4 files
 def main(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
-    today = date.today()
     playlist = get_video_posts(f'{sub}',f'{period}')
     uuid_value = str(uuid.uuid4())
     parent_dir = working_dir
@@ -80,6 +126,9 @@ def main(sub,period):
     for post in playlist:
         print (post["permalink"])
         download_video(post["permalink"],path)
+        active_path = glob.glob(f"{path}/*.mp4")
+        dest_path = f'{path}/{post["title"]}.mp4'
+        os.rename(active_path, dest_path)
 
     print("Files downloaded successfully")
 
@@ -87,11 +136,11 @@ def main(sub,period):
         for path, subdirs, files in os.walk(f'{path}'):
             for filename in files:
                 f = os.path.join(path, filename)
-                a.write(f'files {f}' + os.linesep) 
+                a.write(f'file {f}' + os.linesep) 
 
     print("Merging files now...")
-    
+
     # Merging all videos together
-    ffmpeg.input('output.txt', f='concat', safe=0).output(f'{sub}_{period}_{date.isoformat(today)}.mp4').run()
+    #ffmpeg.input('output.txt', f='concat', safe=0).output(f'{sub}_{period}_{date.isoformat(today)}.mp4').run()
 
     print("Done! Enjoy your content!")
