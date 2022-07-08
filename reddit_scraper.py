@@ -3,16 +3,14 @@ import uuid
 import os
 import glob
 from redvid import Downloader
-import ffmpeg
 import requests
 from datetime import date
+import time
 
 #Peertube
 from __future__ import print_function
-import time
 import peertube
 from peertube.rest import ApiException
-from pprint import pprint
 
 reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
@@ -46,6 +44,7 @@ def get_reddit_list(sub,period):
     return postlist
 
 # Check for videos and collect list
+
 def get_video_posts(sub,period):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     video_urllist = []
@@ -72,36 +71,49 @@ def get_video_posts(sub,period):
 
 
 # Download MP4 - v.reddit.it
+
 def download_video(url,path):
     reddit = Downloader(max_q=True)
     reddit.url = url
     reddit.path = path
     reddit.download()
 
+# Upload video to peertube instance
 
-def upload_video(video_path):
+def upload_video(video_path,title,sub):
+    # video_path = "/home/john/code_repo/reddit_scraper/unexpected_day_2022-07-05.mp4"
+    # title = 'unexpected_day_2022-07-05'
+    # sub = "unexpected"
     with peertube.ApiClient(configuration) as api_client:
         # Create an instance of the API class
         api_instance = peertube.VideoApi(api_client)
 
+    if sub == 'unexpected':
+        channel_id = 6
+    elif sub == 'publicfreakout':
+        channel_id = 7
+    else:
+        print('Not a valid channel_id')
+
     videofile = video_path # file | Video file
-    channel_id = 56 # int | Channel id that will contain this video
-    name = 'name_example' # str | Video name
-    privacy = peertube.VideoPrivacySet() # VideoPrivacySet |  (optional)
-    category = 56 # int | Video category (optional)
-    description = 'description_example' # str | Video description (optional)
-    wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
-    tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
+    name = title # str | Video name
+    privacy = 1 # VideoPrivacySet |  (optional)
+    # category = 56 # int | Video category (optional)
+    # description = 'description_example' # str | Video description (optional)
+    # wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
+    # tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
 
     try:
         # Upload a video
-        api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy, category=category, description=description, wait_transcoding=wait_transcoding, tags=tags)
-        pprint(api_response)
+        api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy)
     except ApiException as e:
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+    # return api_response
+
 
 
 # Input subreddit and period of time to create working directory and collect mp4 files
+
 def main(sub,period):
     #sub = 'funny'
     #period = 'day'
@@ -116,20 +128,17 @@ def main(sub,period):
         print (post["permalink"])
         download_video(post["permalink"],path)
         active_path = glob.glob(f"{path}/*.mp4")
-        dest_path = f'{path}/{post["title"]}.mp4'
-        os.rename(active_path, dest_path)
+        upload_video(active_path[0],post["title"],sub)
+        time.sleep(1)
+        os.remove(active_path[0])
 
     print("Files downloaded successfully")
 
-    with open("output.txt", "w") as a:
-        for path, subdirs, files in os.walk(f'{path}'):
-            for filename in files:
-                f = os.path.join(path, filename)
-                a.write(f'file {f}' + os.linesep) 
-
-    print("Merging files now...")
+    # with open("output.txt", "w") as a:
+    #     for path, subdirs, files in os.walk(f'{path}'):
+    #         for filename in files:
+    #             f = os.path.join(path, filename)
+    #             a.write(f'file {f}' + os.linesep) 
 
     # Merging all videos together
     #ffmpeg.input('output.txt', f='concat', safe=0).output(f'{sub}_{period}_{date.isoformat(today)}.mp4').run()
-
-    print("Done! Enjoy your content!")
