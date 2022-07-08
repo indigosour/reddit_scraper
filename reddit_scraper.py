@@ -85,28 +85,17 @@ def upload_video(video_path):
         api_instance = peertube.VideoApi(api_client)
 
     videofile = video_path # file | Video file
-    
     channel_id = 56 # int | Channel id that will contain this video
     name = 'name_example' # str | Video name
-    thumbnailfile = '/path/to/file' # file | Video thumbnail file (optional)
-    previewfile = '/path/to/file' # file | Video preview file (optional)
     privacy = peertube.VideoPrivacySet() # VideoPrivacySet |  (optional)
     category = 56 # int | Video category (optional)
-    licence = 'licence_example' # str | Video licence (optional)
-    language = 56 # int | Video language (optional)
     description = 'description_example' # str | Video description (optional)
     wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
-    support = 'support_example' # str | A text tell the audience how to support the video creator (optional)
-    nsfw = True # bool | Whether or not this video contains sensitive content (optional)
     tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
-    comments_enabled = True # bool | Enable or disable comments for this video (optional)
-    download_enabled = True # bool | Enable or disable downloading for this video (optional)
-    originally_published_at = '2013-10-20T19:20:30+01:00' # datetime | Date when the content was originally published (optional)
-    schedule_update = peertube.VideoScheduledUpdate() # VideoScheduledUpdate |  (optional)
 
     try:
         # Upload a video
-        api_response = api_instance.videos_upload_post(videofile, channel_id, name, thumbnailfile=thumbnailfile, previewfile=previewfile, privacy=privacy, category=category, licence=licence, language=language, description=description, wait_transcoding=wait_transcoding, support=support, nsfw=nsfw, tags=tags, comments_enabled=comments_enabled, download_enabled=download_enabled, originally_published_at=originally_published_at, schedule_update=schedule_update)
+        api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy, category=category, description=description, wait_transcoding=wait_transcoding, tags=tags)
         pprint(api_response)
     except ApiException as e:
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
