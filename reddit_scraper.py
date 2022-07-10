@@ -1,12 +1,5 @@
-import praw
-import uuid
-import os
-import glob
+import praw, sys, time, pprint, datetime, requests, glob, os, uuid, json
 from redvid import Downloader
-import requests
-import datetime
-import time
-import pprint
 
 #Peertube
 from __future__ import print_function
@@ -17,18 +10,44 @@ reddit_read_only = praw.Reddit(client_id="***REMOVED***",         # your client 
                                client_secret="***REMOVED***",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
-configuration = peertube.Configuration(
-    host = "***REMOVED***"
-)
-configuration.access_token = 'd3a24a4116a73a8b123cdbc9e232de21a290ded5'
+peertube_api_url = "***REMOVED***"
+peertube_api_user = "autoupload"
+peertube_api_pass = "***REMOVED***"
 
+def get_token():
+    global client_id, client_secret, peertube_api_user, peertube_api_pass
+    data = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'password',
+        'response_type': 'code',
+        'username': peertube_api_user,
+        'password': peertube_api_pass
+    }
+
+    response = requests.post(peertube_api_url + '/users/token', data=data)
+    data = response.json()
+    token_type = data['token_type']
+    access_token = data['access_token']
+    return access_token
+
+response = requests.get(peertube_api_url + '/oauth-clients/local')
+data = response.json()
+client_id = data['client_id']
+client_secret = data['client_secret']
+
+configuration = peertube.Configuration(
+host = f'{peertube_api_url}'
+)
+configuration.access_token = get_token()
 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage/"
 
+
+
 # Get reddit list for <sub> - videos,tiktokcringe,etc and <period> - day, week, month, year
 # Output: json object containing id, title, author, score, permalink, and flare
-
 def get_reddit_list(sub,period):
     subreddit = reddit_read_only.subreddit(f'{sub}')
     posts = subreddit.top(f'{period}')
@@ -44,8 +63,8 @@ def get_reddit_list(sub,period):
         })
     return postlist
 
-# Check for videos and collect list
 
+# Check for videos and collect list
 def get_video_posts(sub,period):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     video_urllist = []
@@ -72,7 +91,6 @@ def get_video_posts(sub,period):
 
 
 # Download MP4 - v.reddit.it
-
 def download_video(url,path):
     reddit = Downloader(max_q=True)
     reddit.url = url
@@ -81,7 +99,6 @@ def download_video(url,path):
 
 
 # Upload video to peertube instance
-
 def upload_video(video_path,title,sub):
     # video_path = "/home/john/code_repo/reddit_scraper/unexpected_day_2022-07-05.mp4"
     # title = 'unexpected_day_2022-07-05'
@@ -113,44 +130,44 @@ def upload_video(video_path,title,sub):
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
     # return api_response
 
-# Create playlist in peertube
 
-def create_playlist(display_name,sub):
+# Create playlist in peertube
+def create_playlist(display_name,channel_id):
     # Enter a context with an instance of the API client
     with peertube.ApiClient(configuration) as api_client:
         # Create an instance of the API class
         api_instance = peertube.VideoPlaylistsApi(api_client)
     privacy = 1 # VideoPlaylistPrivacySet |  (optional)
     #description = 'description_example' # str | Video playlist description (optional)
-    video_channel_id = sub # int | Video channel in which the playlist will be published (optional)
-
+    video_channel_id = channel_id # int | Video channel in which the playlist will be published (optional)
     try:
         # Create a video playlist
         api_response = api_instance.video_playlists_post(display_name, privacy=privacy, video_channel_id=video_channel_id)
-        pprint(api_response)
     except ApiException as e:
         print("Exception when calling VideoPlaylistsApi->video_playlists_post: %s\n" % e)
+    return api_response
 
 
 # Add video to playlist
-
-def add_video_playlist(v_id):
+def add_video_playlist(v_id,p_id):
+    configuration = peertube.Configuration(
+    host = f'{peertube_api_url}/video-playlists/{p_id}/videos'
+    )
+    configuration.access_token = get_token()
+    
     # Enter a context with an instance of the API client
     with peertube.ApiClient(configuration) as api_client:
         # Create an instance of the API class
         api_instance = peertube.VideoPlaylistsApi(api_client)
-        id = v_id
-
     try:
         # Add a video in a playlist
-        api_response = api_instance.video_playlists_id_videos_post(id)
+        api_response = api_instance.video_playlists_id_videos_post(v_id)
         pprint(api_response)
     except ApiException as e:
         print("Exception when calling VideoPlaylistsApi->video_playlists_id_videos_post: %s\n" % e)
     
 
 # Input subreddit and period of time to create working directory and collect mp4 files
-
 def main(sub,period):
     #sub = 'funny'
     #period = 'day'
@@ -171,9 +188,10 @@ def main(sub,period):
     else:
         print('Not a valid channel_id')
 
-    create_playlist(f'{proper} - {period} - {date}',sub)
+    # Create Peertube playlist
+    p_id = create_playlist(f'{proper} - {period} - {date}',channel_id)
+    p_id = p_id["video_playlist"]["id"]
     
-
     for post in playlist:
         # Download video from Redvid
         download_video(post["permalink"],path)
@@ -186,7 +204,7 @@ def main(sub,period):
         print("Video upload complete")
         
         # Add video to playlist
-        add_video_playlist(channel_id)
+        add_video_playlist(channel_id,p_id)
         print("Video added to playlist")
 
         time.sleep(1)
