@@ -14,6 +14,7 @@ peertube_api_url = "***REMOVED***"
 peertube_api_user = "autoupload"
 peertube_api_pass = "***REMOVED***"
 
+
 def get_token():
     global client_id, client_secret, peertube_api_user, peertube_api_pass
     data = {
@@ -150,11 +151,8 @@ def create_playlist(display_name,channel_id):
 
 # Add video to playlist
 def add_video_playlist(v_id,p_id):
-    configuration = peertube.Configuration(
-    host = f'{peertube_api_url}/video-playlists/{p_id}/videos'
-    )
-    configuration.access_token = get_token()
-    
+    configuration = peertube.Configuration(host = f'{peertube_api_url}/video-playlists/{p_id}/videos')
+    #configuration.access_token = get_token()
     # Enter a context with an instance of the API client
     with peertube.ApiClient(configuration) as api_client:
         # Create an instance of the API class
@@ -188,7 +186,7 @@ def main(sub,period):
         print('Not a valid channel_id')
 
     # Create Peertube playlist
-    p_id = create_playlist(f'{proper} - {period} - {date}',channel_id)
+    # p_id = create_playlist(f'{proper} - {period} - {date}',channel_id)
     
     for post in playlist:
         # Download video from Redvid
@@ -199,11 +197,12 @@ def main(sub,period):
         
         # Upload video to peertube
         v_id = upload_video(active_path[0],post["title"],sub)
+        print(v_id)
         print("Video upload complete")
         
         # Add video to playlist
-        add_video_playlist(v_id,p_id)
-        print("Video added to playlist")
+        # add_video_playlist(v_id,p_id)
+        # print("Video added to playlist")
 
         time.sleep(1)
         os.remove(active_path[0])
