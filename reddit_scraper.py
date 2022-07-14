@@ -1,4 +1,4 @@
-import praw, sys, time, pprint, datetime, requests, glob, os, uuid, json
+import praw, sys, time, pprint, datetime, requests, glob, os, uuid, json, re
 from redvid import Downloader
 
 #Peertube
@@ -125,11 +125,10 @@ def upload_video(video_path,title,sub):
     try:
         # Upload a video
         api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy)
-        pprint(api_response)
+        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
     except ApiException as e:
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
-    # return api_response
-
+    return api_out
 
 # Create playlist in peertube
 def create_playlist(display_name,channel_id):
@@ -143,9 +142,10 @@ def create_playlist(display_name,channel_id):
     try:
         # Create a video playlist
         api_response = api_instance.video_playlists_post(display_name, privacy=privacy, video_channel_id=video_channel_id)
+        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
     except ApiException as e:
         print("Exception when calling VideoPlaylistsApi->video_playlists_post: %s\n" % e)
-    return api_response
+    return api_out
 
 
 # Add video to playlist
@@ -161,8 +161,7 @@ def add_video_playlist(v_id,p_id):
         api_instance = peertube.VideoPlaylistsApi(api_client)
     try:
         # Add a video in a playlist
-        api_response = api_instance.video_playlists_id_videos_post(v_id)
-        pprint(api_response)
+        api_instance.video_playlists_id_videos_post(v_id)
     except ApiException as e:
         print("Exception when calling VideoPlaylistsApi->video_playlists_id_videos_post: %s\n" % e)
     
@@ -190,7 +189,6 @@ def main(sub,period):
 
     # Create Peertube playlist
     p_id = create_playlist(f'{proper} - {period} - {date}',channel_id)
-    p_id = p_id["video_playlist"]["id"]
     
     for post in playlist:
         # Download video from Redvid
@@ -200,11 +198,11 @@ def main(sub,period):
         active_path = glob.glob(f"{path}/*.mp4")
         
         # Upload video to peertube
-        upload_video(active_path[0],post["title"],sub)
+        v_id = upload_video(active_path[0],post["title"],sub)
         print("Video upload complete")
         
         # Add video to playlist
-        add_video_playlist(channel_id,p_id)
+        add_video_playlist(v_id,p_id)
         print("Video added to playlist")
 
         time.sleep(1)
