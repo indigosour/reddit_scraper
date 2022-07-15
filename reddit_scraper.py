@@ -1,17 +1,15 @@
-import praw
-import uuid
-import os
-import glob
+import praw, os, glob, requests
+from datetime import datetime
+from pathlib import Path
 from redvid import Downloader
-import ffmpeg
-import requests
 
 reddit_read_only = praw.Reddit(client_id="***REMOVED***",         # your client id
                                client_secret="***REMOVED***",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
 # Variables
-working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage/"
+working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
+storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
 
 # Get reddit list for <sub> - videos,tiktokcringe,etc and <period> - day, week, month, year
 # Output: json object containing id, title, author, score, permalink, and flare
@@ -49,6 +47,7 @@ def get_video_posts(sub,period):
                 json_urllist = {
                     "id": json_response.json()[0]['data']['children'][0]['data']['id'],
                     "permalink": reddit_url["permalink"],
+                    "title": json_response.json()[0]['data']['children'][0]['data']['title']
                     }
                 video_urllist.append(json_urllist)
             elif json_response.status_code != 200:
@@ -68,17 +67,23 @@ def main(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
+    today = datetime.today().strftime('%m-%d-%Y')
     playlist = get_video_posts(f'{sub}',f'{period}')
-    uuid_value = str(uuid.uuid4())
-    parent_dir = working_dir
-    path = os.path.join(parent_dir, uuid_value)
-    os.mkdir(path)
+    # uuid_value = str(uuid.uuid4())
+    # parent_dir = working_dir
+    # path = f'{storage_dir}/{sub}_{period}_{today}/'
+    # os.mkdir(path)
 
     for post in playlist:
         print (post["permalink"])
-        download_video(post["permalink"],path)
+        download_video(post["permalink"],working_dir)
 
-    filenames = glob.glob(f'{working_dir}{uuid_value}/*.mp4')
+        old_filename = glob.glob(f"{working_dir}/*.mp4")
+        new_filename = f'{storage_dir}/{sub}_{period}_{today}/{post["title"]}.mp4'
+        Path(old_filename[0]).rename(new_filename)
+        
+
+    filenames = glob.glob(f'{storage_dir}/{sub}_{period}_{today}/{post["title"]}*.mp4')
     return filenames
 
 # subprocess.run(["cat", "*.mp4","|","ffmpeg","-i","pipe:","-c:a","copy","-c:v","copy all.mp4"])
