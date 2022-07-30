@@ -1,4 +1,4 @@
-from signal import pause
+from pip import main
 import praw, os, glob, requests, time
 from datetime import datetime
 from pathlib import Path
@@ -38,7 +38,7 @@ def cleanFilename(sourcestring,  removestring ="%:/,.\\[]<>*?"):
 
 def get_reddit_list_period(sub,period):
     subreddit = reddit_read_only.subreddit(f'{sub}')
-    posts = subreddit.top(f'{period}')
+    posts = subreddit.top(f'{period}',limit=200)
     postlist = []
     for post in posts:
         postlist.append({
@@ -159,9 +159,6 @@ def main_period(sub,period):
             continue
         print(f'Moving {old_filename[0]} to {new_filename}')
         
-    filenames = glob.glob(f'{storage_dir}/{sub}_{period}_{today}/{sani_title}*.mp4')
-    return filenames
-
 
 # Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
 
@@ -188,27 +185,21 @@ def main_num(sub,num):
         except:
             continue
         print(f'Moving {old_filename[0]} to {new_filename}')
-        
-    filenames = glob.glob(f'{storage_dir}/{sub}_Top_{num}_{today}//{sani_title}*.mp4')
-    return filenames
+
 
 # subprocess.run(["cat", "*.mp4","|","ffmpeg","-i","pipe:","-c:a","copy","-c:v","copy all.mp4"])
 # cat *.mp4  | ffmpeg  -i pipe: -c:a copy -c:v copy all.mp4
 
-def content_day():
-    main_period("tiktokcringe","day")
-    print("Finished downloading Tiktokcringe...")
-    main_period("unexpected","day")
-    print("Finished downloading unexpected...")
-    main_period("funny","day")
-    print("Finished downloading funny...")
-    main_period("whatcouldgowrong","day")
-    print("Finished downloading whatcouldgowrong...")
-
-def content_week():
-    main_period("tiktokcringe","week")
-    print("Finished downloading Tiktokcringe...")
-    main_period("unexpected","week")
-    print("Finished downloading unexpected...")
-    main_period("funny","week")
-    print("Finished downloading funny...")
+def content(period):
+    sublist = [
+        
+        "tiktokcringe",     # https://reddit.com/r/tiktokcringe
+        "unexpected",       # https://reddit.com/r/unexpected
+        "funny",            # https://reddit.com/r/funny
+        "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
+        "eyebleach",        # https://reddit.com/r/eyebleach
+        "humansbeingbros"   # https://reddit.com/r/humansbeingbros
+    ]
+    for sub in sublist:
+        main_period(f'{sub}',f'{period}')
+        print(f'Finished downloading {sub}...')
