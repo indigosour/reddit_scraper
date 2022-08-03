@@ -12,6 +12,17 @@ reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # you
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
 
+sublist = [
+
+            "tiktokcringe",     # https://reddit.com/r/tiktokcringe
+            "unexpected",       # https://reddit.com/r/unexpected
+            "funny",            # https://reddit.com/r/funny
+            "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
+            "eyebleach",        # https://reddit.com/r/eyebleach
+            "humansbeingbros"   # https://reddit.com/r/humansbeingbros
+
+        ]
+
 def cleanFilename(sourcestring,  removestring ="%:/,.\\[]<>*?"):
     """Clean a string by removing selected characters.
 
@@ -158,7 +169,7 @@ def main_period(sub,period):
         except:
             continue
         print(f'Moving {old_filename[0]} to {new_filename}')
-        
+      
 
 # Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
 
@@ -190,16 +201,11 @@ def main_num(sub,num):
 # subprocess.run(["cat", "*.mp4","|","ffmpeg","-i","pipe:","-c:a","copy","-c:v","copy all.mp4"])
 # cat *.mp4  | ffmpeg  -i pipe: -c:a copy -c:v copy all.mp4
 
+
+# Download content from selected subs based on period
+
 def content(period):
-    sublist = [
-        
-        "tiktokcringe",     # https://reddit.com/r/tiktokcringe
-        "unexpected",       # https://reddit.com/r/unexpected
-        "funny",            # https://reddit.com/r/funny
-        "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
-        "eyebleach",        # https://reddit.com/r/eyebleach
-        "humansbeingbros"   # https://reddit.com/r/humansbeingbros
-    ]
+    global sublist
     for sub in sublist:
         main_period(f'{sub}',f'{period}')
         print(f'Finished downloading {sub}...')
