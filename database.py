@@ -1,5 +1,5 @@
 import mysql.connector as database
-import names, praw, datetime
+import praw, datetime
 
 reddit_read_only = praw.Reddit(client_id="***REMOVED***",         # your client id
                                client_secret="***REMOVED***",      # your client secret
@@ -22,12 +22,21 @@ def create_sub_table(sub):
         statement = f"""
 
         CREATE TABLE subreddit_{sub} (
-            PostID int NOT NULL AUTO_INCREMENT,
-            Title varchar(255),
-            Score int,
+            id varchar(255),
+            title varchar(255),
+            author varchar(255),
+            score int,
             upvote_ratio DECIMAL,
+            num_comments int,
             created_utc DATETIME,
-            PRIMARY KEY (PersonID)
+            permalink varchar(255),
+            link_flair_template_id varchar(255),
+            flair varchar(255),
+            is_original_content tinyint,
+            is_self tinyint,
+            over_18 tinyint,
+            stickied tinyint,
+            PRIMARY KEY (id)
                 );
         
         """
@@ -36,27 +45,6 @@ def create_sub_table(sub):
         print("Successfully created table in the db")
     except database.Error as e:
         print(f"Error adding entry to database: {e}")
-
-
-def add_data(first_name, last_name):
-    try:
-        statement = "INSERT INTO employees (FirstName,LastName) VALUES (%s, %s)"
-        data = (first_name, last_name)
-        cursor.execute(statement, data)
-        connection.commit()
-        print("Successfully added entry to database")
-    except database.Error as e:
-        print(f"Error adding entry to database: {e}")
-
-def get_data(last_name):
-    try:
-      statement = "SELECT FirstName, LastName FROM employees WHERE LastName=%s"
-      data = (last_name,)
-      cursor.execute(statement, data)
-      for (first_name, last_name) in cursor:
-        print(f"Successfully retrieved {first_name}, {last_name}")
-    except database.Error as e:
-      print(f"Error retrieving entry from database: {e}")
 
 
 def get_reddit_list_number(sub,num):
@@ -68,6 +56,7 @@ def get_reddit_list_number(sub,num):
         "title": post.title,
         "author": post.author.name,
         "score": post.score,
+        "upvote_ratio": post.upvote_ratio,
         "num_comments": post.num_comments,
         "created_utc": datetime.datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S'),
         "permalink": "https://reddit.com" + post.permalink,
@@ -89,6 +78,7 @@ def store_reddit_posts(sub, postlist):
         title = x['title']
         author = x['author']
         score = x['score']
+        upvote_ratio = x['upvote_ratio']
         num_comments = x['num_comments']
         created_utc = x['created_utc']
         permalink = x['permalink']
@@ -102,9 +92,9 @@ def store_reddit_posts(sub, postlist):
         try:
             statement = f"""
             
-            INSERT INTO subreddit_{sub} (id,title,author,score,num_comments,created_utc,
+            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,created_utc,
             permalink,link_flair_template_id,flair,is_original_content,is_self,over_18,stickied) 
-            VALUES ({id},{title},{author},{score},{num_comments},{created_utc},
+            VALUES ({id},{title},{author},{score},{upvote_ratio},{num_comments},{created_utc},
             {permalink},{link_flair_template_id},{flair},{is_original_content},{is_self},{over_18},{stickied})"
             
             """
@@ -117,4 +107,3 @@ def store_reddit_posts(sub, postlist):
          
 
     return print(f"Successfully added {entrycount} entries to database")
-    
