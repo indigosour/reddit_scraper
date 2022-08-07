@@ -8,6 +8,19 @@ reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # you
 username = "dbuser"
 password = "Pbp5zSfVEZcLTr8skxQbVYgJ3YpLBE"
 
+sublist = [
+
+            "tiktokcringe",     # https://reddit.com/r/tiktokcringe
+            "unexpected",       # https://reddit.com/r/unexpected
+            "funny",            # https://reddit.com/r/funny
+            "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
+            "eyebleach",        # https://reddit.com/r/eyebleach
+            "humansbeingbros"   # https://reddit.com/r/humansbeingbros
+
+        ]
+
+debug = False
+
 connection = database.connect(
     user=username,
     password=password,
@@ -16,6 +29,10 @@ connection = database.connect(
     )
 
 cursor = connection.cursor()
+
+def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
+    #remove the undesireable characters
+    return ''.join([c for c in sourcestring if c not in removestring])
 
 def create_sub_table(sub):
     try:
@@ -29,7 +46,7 @@ def create_sub_table(sub):
             upvote_ratio DECIMAL,
             num_comments int,
             created_utc DATETIME,
-            link_flair_template_id varchar(255),
+            path varchar(255),
             flair varchar(255),
             is_original_content BOOL,
             is_self BOOL,
@@ -58,61 +75,61 @@ def drop_table(table):
 def get_reddit_list_number(sub,num):
     posts = reddit_read_only.subreddit(f'{sub}').top(limit=num)
     postlist = []
-    
     for post in posts:
-        try:
-            print(post.author.name)
-            postlist.append({
-            "id": post.id,
-            "title": post.title,
-            "author": post.author.name,
-            "score": post.score,
-            "upvote_ratio": post.upvote_ratio,
-            "num_comments": post.num_comments,
-            "created_utc": str(datetime.datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
-            #"permalink": "https://reddit.com" + post.permalink,
-            "link_flair_template_id": post.link_flair_template_id,
-            "flair": post.link_flair_text,
-            "is_original_content": post.is_original_content,
-            "is_self": post.is_self,
-            "over_18": post.over_18,
-            "stickied": post.stickied,
-            })
-            print(postlist)
-        except Exception as e:
-            print(e)
+        if post.author != None and post.score > 1000:
+            try:
+                if debug: 
+                    print(post)
+                postlist.append({
+                "id": post.id,
+                "title": cleanString(post.title),
+                "author": post.author.name,
+                "score": post.score,
+                "upvote_ratio": post.upvote_ratio,
+                "num_comments": post.num_comments,
+                "created_utc": str(datetime.datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+                "flair": post.link_flair_text,
+                "is_original_content": post.is_original_content,
+                "is_self": post.is_self,
+                "over_18": post.over_18,
+                "stickied": post.stickied,
+                })
+                
+            except Exception as e:
+                print(e)
     return postlist
 
 
 def store_reddit_posts(sub, postlist):
     entrycount = 0
-    for x in postlist:
-        ++entrycount
-        id = x['id']
-        title = x['title']
-        author = x['author']
-        score = x['score']
-        upvote_ratio = x['upvote_ratio']
-        num_comments = x['num_comments']
-        created_utc = x['created_utc']
-        link_flair_template_id = x['link_flair_template_id']
-        flair = x['flair']
-        is_original_content = x['is_original_content']
-        is_self = x['is_self']
-        over_18 = x['over_18']
-        stickied = x['stickied']
+    for post in postlist:
+        id = post['id']
+        title = post['title']
+        author = post['author']
+        score = post['score']
+        upvote_ratio = post['upvote_ratio']
+        num_comments = post['num_comments']
+        created_utc = post['created_utc']
+        flair = post['flair']
+        is_original_content = post['is_original_content']
+        is_self = post['is_self']
+        over_18 = post['over_18']
+        stickied = post['stickied']
 
         try:
             statement = f"""
             
-            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,created_utc,link_flair_template_id,flair,is_original_content,is_self,over_18,stickied) 
-            VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}","{link_flair_template_id}","{flair}",{is_original_content},{is_self},{over_18},{stickied})
+            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
+            created_utc,link_flair_template_id,flair,is_original_content,is_self,over_18,stickied) 
+            VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
+            "{flair}",{is_original_content},{is_self},{over_18},{stickied})
             
             """
             #print(statement)
             cursor.execute(statement)
             connection.commit()
             print("Successfully added entry to database")
+            entrycount+=1
         except database.Error as e:
             print(f"Error adding entry to database: {e}")
     return print(f"Successfully added {entrycount} entries to database")
@@ -121,3 +138,10 @@ def store_reddit_posts(sub, postlist):
 def main(sub,num):
     postlist = get_reddit_list_number(sub,num)
     store_reddit_posts(sub,postlist)
+
+def grab_dat():
+    global sublist
+    for sub in sublist:
+        drop_table(f"subreddit_{sub}")
+        create_sub_table(f"{sub}")
+        main(sub,1000)
