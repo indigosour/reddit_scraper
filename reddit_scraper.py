@@ -1,4 +1,5 @@
 from pip import main
+import mysql.connector as database
 import praw, os, glob, requests, time
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +8,15 @@ from redvid import Downloader
 reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
+
+username = "dbuser"
+password = "GxVpw3zwBYx7eJ8uX2jW844du4Bc2m"
+connection = database.connect(
+    user=username,
+    password=password,
+    host="mongo1.thisjayjay.gmail.com.beta.tailscale.net",
+    database="reddit_scraper"
+    )
 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
