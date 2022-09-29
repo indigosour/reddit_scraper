@@ -1,5 +1,5 @@
 import mysql.connector as database
-import praw, datetime
+import praw, datetime, requests
 from videohash import VideoHash
 debug = False
 
@@ -83,6 +83,7 @@ def get_reddit_list_number(sub,num):
     postlist = []
     for post in posts:
         if post.author != None and post.score > 1000:
+
             try:
                 if debug: 
                     print(post)
@@ -106,6 +107,29 @@ def get_reddit_list_number(sub,num):
                 print(e)
     return postlist
 
+def get_video_posts_num(sub,num):
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+    video_urllist = []
+    #sub = 'funny'
+    #num = 500
+    for post in get_reddit_list_number(f'{sub}',num):
+        if post["permalink"]:
+            if post["permalink"][len(post["permalink"])-1] == '/':
+                json_url = post["permalink"][:len(post["permalink"])-1]+'.json'
+            else:
+                json_url = post["permalink"] + '.json'
+            json_response = requests.get(json_url, 
+                            headers= headers)
+            if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
+                json_urllist = {
+                    "id": json_response.json()[0]['data']['children'][0]['data']['id'],
+                    "permalink": post["permalink"],
+                    "title": json_response.json()[0]['data']['children'][0]['data']['title']
+                    }
+                video_urllist.append(json_urllist)
+            elif json_response.status_code != 200:
+                print("Error Detected, check the URL!!!")
+    return video_urllist
 
 def store_reddit_posts(sub, postlist):
     cursor = connection.cursor()
