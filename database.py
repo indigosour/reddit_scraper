@@ -1,5 +1,7 @@
 import mysql.connector as database
 import praw, datetime
+from videohash import VideoHash
+debug = False
 
 reddit_read_only = praw.Reddit(client_id="***REMOVED***",         # your client id
                                client_secret="***REMOVED***",      # your client secret
@@ -7,6 +9,13 @@ reddit_read_only = praw.Reddit(client_id="***REMOVED***",         # your client 
 
 username = "dbuser"
 password = "***REMOVED***"
+connection = database.connect(
+    user=username,
+    password=password,
+    host="mongo1.thisjayjay.gmail.com.beta.tailscale.net",
+    database="reddit_scraper"
+    )
+
 
 sublist = [
 
@@ -19,22 +28,12 @@ sublist = [
 
         ]
 
-debug = False
-
-connection = database.connect(
-    user=username,
-    password=password,
-    host="10.0.0.20",
-    database="test"
-    )
-
-cursor = connection.cursor()
-
 def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
     #remove the undesireable characters
     return ''.join([c for c in sourcestring if c not in removestring])
 
 def create_sub_table(sub):
+    cursor = connection.cursor()
     try:
         statement = f"""
 
@@ -46,30 +45,37 @@ def create_sub_table(sub):
             upvote_ratio DECIMAL,
             num_comments int,
             created_utc DATETIME,
-            path varchar(255),
             flair varchar(255),
             is_original_content BOOL,
             is_self BOOL,
             over_18 BOOL,
             stickied BOOL,
+            permalink varchar(255),
+            path varchar(255),
             PRIMARY KEY (id)
                 );
         
         """
         cursor.execute(statement)
         connection.commit()
-        print("Successfully created table in the db")
+        print(f'Successfully created table subreddit_{sub} in the db')
+        cursor.close()
     except database.Error as e:
         print(f"Error adding entry to database: {e}")
+        cursor.close()
+
 
 
 def drop_table(table):
+    cursor = connection.cursor()
     try:
         cursor.execute(f"DROP TABLE IF EXISTS {table}")
         connection.commit()
-        print("Table dropped")
+        print(f'{table} dropped')
     except database.Error as e:
+        cursor.close()
         print(f"Error adding entry to database: {e}")
+    cursor.close()
 
 
 def get_reddit_list_number(sub,num):
@@ -93,6 +99,7 @@ def get_reddit_list_number(sub,num):
                 "is_self": post.is_self,
                 "over_18": post.over_18,
                 "stickied": post.stickied,
+                "permalink": "https://reddit.com" + post.permalink,
                 })
                 
             except Exception as e:
@@ -101,6 +108,7 @@ def get_reddit_list_number(sub,num):
 
 
 def store_reddit_posts(sub, postlist):
+    cursor = connection.cursor()
     entrycount = 0
     for post in postlist:
         id = post['id']
@@ -115,14 +123,15 @@ def store_reddit_posts(sub, postlist):
         is_self = post['is_self']
         over_18 = post['over_18']
         stickied = post['stickied']
+        permalink = post['permalink']
 
         try:
             statement = f"""
             
             INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
-            created_utc,link_flair_template_id,flair,is_original_content,is_self,over_18,stickied) 
+            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path) 
             VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
-            "{flair}",{is_original_content},{is_self},{over_18},{stickied})
+            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL)
             
             """
             #print(statement)
@@ -131,7 +140,9 @@ def store_reddit_posts(sub, postlist):
             print("Successfully added entry to database")
             entrycount+=1
         except database.Error as e:
+            cursor.close()
             print(f"Error adding entry to database: {e}")
+    cursor.close()
     return print(f"Successfully added {entrycount} entries to database")
 
 
@@ -144,4 +155,5 @@ def grab_dat():
     for sub in sublist:
         drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
-        main(sub,1000)
+        main(sub,500)
+
