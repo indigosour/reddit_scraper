@@ -83,7 +83,6 @@ def get_reddit_list_number(sub,num):
     postlist = []
     for post in posts:
         if post.author != None and post.score > 1000:
-
             try:
                 if debug: 
                     print(post)
