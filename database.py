@@ -1,6 +1,10 @@
 import mysql.connector as database
 import praw, datetime, requests
 from videohash import VideoHash
+from pathlib import Path
+from redvid import Downloader
+import os,time
+
 debug = False
 
 reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
@@ -16,6 +20,9 @@ connection = database.connect(
     database="reddit_scraper"
     )
 
+# Variables
+working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
+storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
 
 sublist = [
 
@@ -52,6 +59,8 @@ def create_sub_table(sub):
             stickied BOOL,
             permalink varchar(255),
             path varchar(255),
+            videohash(255),
+            is_downloaded BOOL,
             PRIMARY KEY (id)
                 );
         
@@ -152,9 +161,9 @@ def store_reddit_posts(sub, postlist):
             statement = f"""
             
             INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
-            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path) 
+            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path,videohash,is_downloaded) 
             VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
-            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL)
+            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL,NULL,NULL)
             
             """
             #print(statement)
@@ -166,6 +175,69 @@ def store_reddit_posts(sub, postlist):
             print(f"Error adding entry to database: {e}")
     cursor.close()
     return print(f"Successfully added {entrycount} entries to database")
+
+
+
+#Download video posts
+
+def download_video(url,path):
+    reddit = Downloader(max_q=True)
+    reddit.url = url
+    reddit.path = path
+    reddit.download()
+
+# Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
+
+def main_period(sub,period):
+    #sub = 'funny'
+    #period = 'day'
+    global working_dir
+    today = datetime.today().strftime('%m-%d-%Y')
+    playlist = get_video_posts_period(f'{sub}',f'{period}')
+    # uuid_value = str(uuid.uuid4())
+    # parent_dir = working_dir
+    path = f'{storage_dir}/{sub}_{period}_{today}/'
+    os.mkdir(path)
+
+    for post in playlist:
+        print (post["permalink"])
+        sani_title = cleanString(post["title"])
+        download_video(post["permalink"],working_dir)
+        time.sleep(0.500)
+        old_filename = glob.glob(f"{working_dir}/*.mp4")
+        new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
+        try:
+            Path(old_filename[0]).rename(new_filename)
+        except:
+            continue
+        print(f'Moving {old_filename[0]} to {new_filename}')
+      
+
+# Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
+
+def main_num(sub,num):
+    #sub = 'funny'
+    #period = 'day'
+    global working_dir
+    today = datetime.today().strftime('%m-%d-%Y')
+    playlist = get_video_posts_num(f'{sub}',num)
+    # uuid_value = str(uuid.uuid4())
+    # parent_dir = working_dir
+    path = f'{storage_dir}/{sub}_Top_{num}_{today}/'
+    os.mkdir(path)
+
+    for post in playlist:
+        print (post["permalink"])
+        sani_title = cleanFilename(post["title"])
+        download_video(post["permalink"],working_dir)
+        time.sleep(0.500)
+        old_filename = glob.glob(f"{working_dir}/*.mp4")
+        new_filename = f'{storage_dir}/{sub}_Top_{num}_{today}/{sani_title}.mp4'
+        try:
+            Path(old_filename[0]).rename(new_filename)
+        except:
+            continue
+        print(f'Moving {old_filename[0]} to {new_filename}')
 
 
 def main(sub,num):
