@@ -7,12 +7,12 @@ reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # you
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
-username = "dbuser"
+username = "python_u"
 password = "GxVpw3zwBYx7eJ8uX2jW844du4Bc2m"
 connection = database.connect(
     user=username,
     password=password,
-    host="mongo1.thisjayjay.gmail.com.beta.tailscale.net",
+    host="172.18.0.3",
     database="reddit_scraper"
     )
 
@@ -163,7 +163,6 @@ def store_reddit_posts(sub, postlist):
             print("Successfully added entry to database")
             entrycount+=1
         except database.Error as e:
-            cursor.close()
             print(f"Error adding entry to database: {e}")
     cursor.close()
     return print(f"Successfully added {entrycount} entries to database")
@@ -179,4 +178,3 @@ def grab_dat():
         drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
         main(sub,500)
-
