@@ -1,9 +1,10 @@
 import mysql.connector as db
-import praw, datetime, requests
+import praw, requests, glob
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
 import os,time
+from datetime import datetime, timedelta
 
 debug = False
 
@@ -158,21 +159,21 @@ def get_dl_list_period(sub,period):
 
     #Determine the start and end dates based on the period given
     if period == "day":
-        start_date = str(datetime.date.today() - datetime.timedelta(days=1))
-        end_date = str(datetime.date.today())
+        start_date = str(datetime.today() - timedelta(days=1))
+        end_date = str(datetime.today())
     elif period == "week":
-        start_date = str(datetime.date.today() - datetime.timedelta(days=7))
-        end_date = str(datetime.date.today())
+        start_date = str(datetime.today() - timedelta(days=7))
+        end_date = str(datetime.today())
     elif period == "month":
-        start_date = str(datetime.date.today() - datetime.timedelta(days=30))
-        end_date = str(datetime.date.today())
+        start_date = str(datetime.today() - timedelta(days=30))
+        end_date = str(datetime.today())
     elif period == "year":
-        start_date = str(datetime.date.today() - datetime.timedelta(days=365))
-        end_date = str(datetime.date.today())
+        start_date = str(datetime.today() - timedelta(days=365))
+        end_date = str(datetime.today())
     else:
         print("Invalid period")
 
-    print (f"{start_date} and {end_date}")
+    print (f"Period calculated \nStart Date: {start_date} and End Date: {end_date}")
 
     try:
         select_Query = f"""
@@ -185,9 +186,9 @@ def get_dl_list_period(sub,period):
         cursor.execute(select_Query)
         dl_list = cursor.fetchall()
 
-        for post in dl_list:
-            print(post[0])
-            print(post[1])
+        # for post in dl_list:
+        #     print(post[0])
+        #     print(post[1])
 
     except db.Error as e:
         print("Error reading data from table", e)
@@ -196,6 +197,8 @@ def get_dl_list_period(sub,period):
             connection.close()
             cursor.close()
             print("SQL connection is closed")
+    return dl_list
+
 
 
 def get_reddit_list_number(sub,num):
@@ -213,7 +216,7 @@ def get_reddit_list_number(sub,num):
                 "score": post.score,
                 "upvote_ratio": post.upvote_ratio,
                 "num_comments": post.num_comments,
-                "created_utc": str(datetime.datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+                "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
                 "flair": post.link_flair_text,
                 "is_original_content": post.is_original_content,
                 "is_self": post.is_self,
@@ -266,16 +269,16 @@ def main_period(sub,period):
     #period = 'day'
     global working_dir
     today = datetime.today().strftime('%m-%d-%Y')
-    playlist = get_video_posts_period(f'{sub}',f'{period}')
+    dlList = get_dl_list_period(f'{sub}',f'{period}')
     # uuid_value = str(uuid.uuid4())
     # parent_dir = working_dir
     path = f'{storage_dir}/{sub}_{period}_{today}/'
     os.mkdir(path)
 
-    for post in playlist:
-        print (post["permalink"])
-        sani_title = cleanString(post["title"])
-        download_video(post["permalink"],working_dir)
+    for post in dlList:
+        #print (post[1])
+        sani_title = cleanString(post[0])
+        download_video(post[1],working_dir)
         time.sleep(0.500)
         old_filename = glob.glob(f"{working_dir}/*.mp4")
         new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
