@@ -1,4 +1,4 @@
-import mysql.connector as database
+import mysql.connector as db
 import praw, datetime, requests
 from videohash import VideoHash
 from pathlib import Path
@@ -11,14 +11,24 @@ reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # you
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
-username = "python_u"
-password = "GxVpw3zwBYx7eJ8uX2jW844du4Bc2m"
-connection = database.connect(
-    user=username,
-    password=password,
-    host="172.18.0.3",
-    database="reddit_scraper"
-    )
+def create_db_connection():
+    connection = None
+    user_name = "python_u"
+    user_password = "GxVpw3zwBYx7eJ8uX2jW844du4Bc2m"
+    host_name = "172.18.0.2"
+    db_name = "reddit_scraper"
+    try:
+        connection = db.connect(
+            host=host_name,
+            user=user_name,
+            password=user_password,
+            database=db_name
+        )
+        print("MySQL Database connection successful")
+    except db.Error as err:
+        print(f"Error: '{err}'")
+
+    return connection
 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
@@ -40,10 +50,11 @@ def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
     return ''.join([c for c in sourcestring if c not in removestring])
 
 def create_sub_table(sub):
+    connection = create_db_connection()
     cursor = connection.cursor()
     try:
         statement = f"""
-
+        
         CREATE TABLE subreddit_{sub} (
             id varchar(255),
             title varchar(255),
@@ -59,7 +70,7 @@ def create_sub_table(sub):
             stickied BOOL,
             permalink varchar(255),
             path varchar(255),
-            videohash(255),
+            videohash varchar(255),
             is_downloaded BOOL,
             PRIMARY KEY (id)
                 );
@@ -69,22 +80,29 @@ def create_sub_table(sub):
         connection.commit()
         print(f'Successfully created table subreddit_{sub} in the db')
         cursor.close()
-    except database.Error as e:
-        print(f"Error adding entry to database: {e}")
-        cursor.close()
-
+    except db.Error as e:
+        print("Error creating table", e)
+    finally:
+        if connection.is_connected():
+            connection.close()
+            cursor.close()
+            print("MySQL connection is closed")
 
 
 def drop_table(table):
+    connection = create_db_connection()
     cursor = connection.cursor()
     try:
         cursor.execute(f"DROP TABLE IF EXISTS {table}")
         connection.commit()
         print(f'{table} dropped')
-    except database.Error as e:
-        cursor.close()
-        print(f"Error adding entry to database: {e}")
-    cursor.close()
+    except db.Error as e:
+        print("Error dropping table", e)
+    finally:
+        if connection.is_connected():
+            connection.close()
+            cursor.close()
+            print("MySQL connection is closed")
 
 
 def get_reddit_list_number(sub,num):
@@ -115,6 +133,7 @@ def get_reddit_list_number(sub,num):
                 print(e)
     return postlist
 
+
 def get_video_posts_num(sub,num):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     video_urllist = []
@@ -139,7 +158,9 @@ def get_video_posts_num(sub,num):
                 print("Error Detected, check the URL!!!")
     return video_urllist
 
+
 def store_reddit_posts(sub, postlist):
+    connection = create_db_connection()
     cursor = connection.cursor()
     entrycount = 0
     for post in postlist:
@@ -171,11 +192,41 @@ def store_reddit_posts(sub, postlist):
             connection.commit()
             print("Successfully added entry to database")
             entrycount+=1
-        except database.Error as e:
-            print(f"Error adding entry to database: {e}")
-    cursor.close()
+        except db.Error as e:
+            print("Error reading data from MySQL table", e)
+    if connection.is_connected():
+        connection.close()
+        cursor.close()
+        print("MySQL connection is closed")
     return print(f"Successfully added {entrycount} entries to database")
 
+
+def get_reddit_playlist(sub,num):
+    connection = create_db_connection()
+    cursor = connection.cursor()
+    try:
+        sql_select_Query = f"""
+        
+        SELECT * from subreddit_{sub}
+        LIMIT {num}
+        
+        """
+        cursor.execute(sql_select_Query)
+        records = cursor.fetchall()
+
+        for row in records:
+            print("Id = ", row[0], )
+            print("Name = ", row[1])
+            print("Price  = ", row[2])
+            print("Purchase date  = ", row[3], "\n")
+
+    except db.Error as e:
+        print("Error reading data from MySQL table", e)
+    finally:
+        if connection.is_connected():
+            connection.close()
+            cursor.close()
+            print("MySQL connection is closed")
 
 
 #Download video posts
