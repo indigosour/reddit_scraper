@@ -49,6 +49,10 @@ def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
     #remove the undesireable characters
     return ''.join([c for c in sourcestring if c not in removestring])
 
+######################
+######## SQL #########
+######################
+
 def create_sub_table(sub):
     connection = create_db_connection()
     cursor = connection.cursor()
@@ -86,7 +90,7 @@ def create_sub_table(sub):
         if connection.is_connected():
             connection.close()
             cursor.close()
-            print("MySQL connection is closed")
+            print("SQL connection is closed")
 
 
 def drop_table(table):
@@ -102,7 +106,96 @@ def drop_table(table):
         if connection.is_connected():
             connection.close()
             cursor.close()
-            print("MySQL connection is closed")
+            print("SQL connection is closed")
+
+
+def store_reddit_posts(sub, postlist):
+    connection = create_db_connection()
+    cursor = connection.cursor()
+    entrycount = 0
+    for post in postlist:
+        id = post['id']
+        title = post['title']
+        author = post['author']
+        score = post['score']
+        upvote_ratio = post['upvote_ratio']
+        num_comments = post['num_comments']
+        created_utc = post['created_utc']
+        flair = post['flair']
+        is_original_content = post['is_original_content']
+        is_self = post['is_self']
+        over_18 = post['over_18']
+        stickied = post['stickied']
+        permalink = post['permalink']
+
+        try:
+            statement = f"""
+            
+            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
+            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path,videohash,is_downloaded) 
+            VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
+            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL,NULL,NULL)
+            
+            """
+            #print(statement)
+            cursor.execute(statement)
+            connection.commit()
+            print("Successfully added entry to database")
+            entrycount+=1
+        except db.Error as e:
+            print("Error inserting data into table", e)
+    if connection.is_connected():
+        connection.close()
+        cursor.close()
+        print("SQL connection is closed")
+    return print(f"Successfully added {entrycount} entries to database")
+
+
+def get_dl_list_period(sub,period):
+    connection = create_db_connection()
+    cursor = connection.cursor()
+    num = 10
+
+    #Determine the start and end dates based on the period given
+    if period == "day":
+        start_date = str(datetime.date.today() - datetime.timedelta(days=1))
+        end_date = str(datetime.date.today())
+    elif period == "week":
+        start_date = str(datetime.date.today() - datetime.timedelta(days=7))
+        end_date = str(datetime.date.today())
+    elif period == "month":
+        start_date = str(datetime.date.today() - datetime.timedelta(days=30))
+        end_date = str(datetime.date.today())
+    elif period == "year":
+        start_date = str(datetime.date.today() - datetime.timedelta(days=365))
+        end_date = str(datetime.date.today())
+    else:
+        print("Invalid period")
+
+    print (f"{start_date} and {end_date}")
+
+    try:
+        select_Query = f"""
+        
+        SELECT title,permalink from subreddit_{sub}
+        WHERE created_utc BETWEEN "{start_date}" AND "{end_date}"
+        LIMIT {num}
+        
+        """
+        cursor.execute(select_Query)
+        dl_list = cursor.fetchall()
+
+        for post in dl_list:
+            print(post[0])
+            print(post[1])
+
+    except db.Error as e:
+        print("Error reading data from table", e)
+    finally:
+        if connection.is_connected():
+            connection.close()
+            cursor.close()
+            print("SQL connection is closed")
 
 
 def get_reddit_list_number(sub,num):
@@ -157,77 +250,6 @@ def get_video_posts_num(sub,num):
             elif json_response.status_code != 200:
                 print("Error Detected, check the URL!!!")
     return video_urllist
-
-
-def store_reddit_posts(sub, postlist):
-    connection = create_db_connection()
-    cursor = connection.cursor()
-    entrycount = 0
-    for post in postlist:
-        id = post['id']
-        title = post['title']
-        author = post['author']
-        score = post['score']
-        upvote_ratio = post['upvote_ratio']
-        num_comments = post['num_comments']
-        created_utc = post['created_utc']
-        flair = post['flair']
-        is_original_content = post['is_original_content']
-        is_self = post['is_self']
-        over_18 = post['over_18']
-        stickied = post['stickied']
-        permalink = post['permalink']
-
-        try:
-            statement = f"""
-            
-            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
-            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path,videohash,is_downloaded) 
-            VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
-            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL,NULL,NULL)
-            
-            """
-            #print(statement)
-            cursor.execute(statement)
-            connection.commit()
-            print("Successfully added entry to database")
-            entrycount+=1
-        except db.Error as e:
-            print("Error reading data from MySQL table", e)
-    if connection.is_connected():
-        connection.close()
-        cursor.close()
-        print("MySQL connection is closed")
-    return print(f"Successfully added {entrycount} entries to database")
-
-
-def get_reddit_playlist(sub,num):
-    connection = create_db_connection()
-    cursor = connection.cursor()
-    try:
-        sql_select_Query = f"""
-        
-        SELECT * from subreddit_{sub}
-        LIMIT {num}
-        
-        """
-        cursor.execute(sql_select_Query)
-        records = cursor.fetchall()
-
-        for row in records:
-            print("Id = ", row[0], )
-            print("Name = ", row[1])
-            print("Price  = ", row[2])
-            print("Purchase date  = ", row[3], "\n")
-
-    except db.Error as e:
-        print("Error reading data from MySQL table", e)
-    finally:
-        if connection.is_connected():
-            connection.close()
-            cursor.close()
-            print("MySQL connection is closed")
-
 
 #Download video posts
 
@@ -294,6 +316,7 @@ def main_num(sub,num):
 def main(sub,num):
     postlist = get_reddit_list_number(sub,num)
     store_reddit_posts(sub,postlist)
+
 
 def grab_dat():
     global sublist
