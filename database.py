@@ -157,7 +157,7 @@ def get_dl_list_period(sub,period):
     cursor = connection.cursor()
     num = 10
 
-    #Determine the start and end dates based on the period given
+    # Determine the start and end dates based on the period given
     if period == "day":
         start_date = str(datetime.today() - timedelta(days=1))
         end_date = str(datetime.today())
@@ -199,13 +199,28 @@ def get_dl_list_period(sub,period):
             print("SQL connection is closed")
     return dl_list
 
+def add_videohash_to_db(sub,v_hash,permalink):
+    connection = create_db_connection()
+    cursor = connection.cursor()
+    try:
+        sql = "UPDATE subreddit_%s SET videohash = %s WHERE permalink = %s"
+        val = ({sub},{v_hash},{permalink})
+
+        cursor.execute(sql, val)
+
+        db.commit()
+
+        print(cursor.rowcount, "record(s) affected")
+
+    except db.Error as e:
+        print("Error inserting data into table", e)
 
 
 def get_reddit_list_number(sub,num):
-    posts = reddit_read_only.subreddit(f'{sub}').top(limit=num)
+    posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
     postlist = []
     for post in posts:
-        if post.author != None and post.score > 1000:
+        if post.author != None and post.score > 500:
             try:
                 if debug: 
                     print(post)
@@ -254,7 +269,8 @@ def get_video_posts_num(sub,num):
                 print("Error Detected, check the URL!!!")
     return video_urllist
 
-#Download video posts
+
+# Download video posts
 
 def download_video(url,path):
     reddit = Downloader(max_q=True)
@@ -262,30 +278,42 @@ def download_video(url,path):
     reddit.path = path
     reddit.download()
 
+
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-def main_period(sub,period):
-    #sub = 'funny'
-    #period = 'day'
+def main_period():
+    sub = 'funny'
+    period = 'day'
     global working_dir
     today = datetime.today().strftime('%m-%d-%Y')
     dlList = get_dl_list_period(f'{sub}',f'{period}')
     # uuid_value = str(uuid.uuid4())
     # parent_dir = working_dir
     path = f'{storage_dir}/{sub}_{period}_{today}/'
-    os.mkdir(path)
+    isExist = os.path.exists(path)
+    if not isExist:
+        os.mkdir(path)
 
     for post in dlList:
-        #print (post[1])
+        print (post[1])
         sani_title = cleanString(post[0])
+
+        # Download video and store in working directory
         download_video(post[1],working_dir)
         time.sleep(0.500)
+
+        # Rename video file
         old_filename = glob.glob(f"{working_dir}/*.mp4")
         new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
         try:
             Path(old_filename[0]).rename(new_filename)
         except:
             continue
+        v_hash = VideoHash(path=f"{new_filename}")
+        url = str(post[1])
+        # Add video hash to database
+        add_videohash_to_db(sub,v_hash.hash,url)
+
         print(f'Moving {old_filename[0]} to {new_filename}')
       
 
@@ -304,7 +332,7 @@ def main_num(sub,num):
 
     for post in playlist:
         print (post["permalink"])
-        sani_title = cleanFilename(post["title"])
+        sani_title = cleanString(post["title"])
         download_video(post["permalink"],working_dir)
         time.sleep(0.500)
         old_filename = glob.glob(f"{working_dir}/*.mp4")
@@ -326,4 +354,4 @@ def grab_dat():
     for sub in sublist:
         drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
-        main(sub,500)
+        main(sub,5000)
