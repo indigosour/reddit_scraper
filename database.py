@@ -16,7 +16,7 @@ def create_db_connection():
     connection = None
     user_name = "***REMOVED***"
     user_password = "***REMOVED***"
-    host_name = "172.18.0.2"
+    host_name = "172.18.0.3"
     db_name = "reddit_scraper"
     try:
         connection = db.connect(
@@ -141,7 +141,7 @@ def store_reddit_posts(sub, postlist):
             #print(statement)
             cursor.execute(statement)
             connection.commit()
-            print("Successfully added entry to database")
+            #print("Successfully added entry to database")
             entrycount+=1
         except db.Error as e:
             print("Error inserting data into table", e)
@@ -155,7 +155,6 @@ def store_reddit_posts(sub, postlist):
 def get_dl_list_period(sub,period):
     connection = create_db_connection()
     cursor = connection.cursor()
-    num = 10
 
     # Determine the start and end dates based on the period given
     if period == "day":
@@ -180,7 +179,6 @@ def get_dl_list_period(sub,period):
         
         SELECT title,permalink from subreddit_{sub}
         WHERE created_utc BETWEEN "{start_date}" AND "{end_date}"
-        LIMIT {num}
         
         """
         cursor.execute(select_Query)
@@ -215,12 +213,21 @@ def add_videohash_to_db(sub,v_hash,permalink):
     except db.Error as e:
         print("Error inserting data into table", e)
 
+####### END SQL FUNCTIONS #######
+
+####### REDDIT FUNCTIONS #######
 
 def get_reddit_list_number(sub,num):
+    # Get the requested number of new posts from the subreddit with minimum upvotes required
+    # and return a post list to upload to the database.
+
+    # Submit: Subreddit (sub) and number (num) of posts to get
+    # Return: Number of posts requested including id, title, author, score, etc.
+
     posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
     postlist = []
     for post in posts:
-        if post.author != None and post.score > 500:
+        if post.author != None and post.score > 700:
             try:
                 if debug: 
                     print(post)
@@ -245,45 +252,22 @@ def get_reddit_list_number(sub,num):
     return postlist
 
 
-def get_video_posts_num(sub,num):
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    video_urllist = []
-    #sub = 'funny'
-    #num = 500
-    for post in get_reddit_list_number(f'{sub}',num):
-        if post["permalink"]:
-            if post["permalink"][len(post["permalink"])-1] == '/':
-                json_url = post["permalink"][:len(post["permalink"])-1]+'.json'
-            else:
-                json_url = post["permalink"] + '.json'
-            json_response = requests.get(json_url, 
-                            headers= headers)
-            if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
-                json_urllist = {
-                    "id": json_response.json()[0]['data']['children'][0]['data']['id'],
-                    "permalink": post["permalink"],
-                    "title": json_response.json()[0]['data']['children'][0]['data']['title']
-                    }
-                video_urllist.append(json_urllist)
-            elif json_response.status_code != 200:
-                print("Error Detected, check the URL!!!")
-    return video_urllist
-
-
 # Download video posts
 
 def download_video(url,path):
-    reddit = Downloader(max_q=True)
-    reddit.url = url
-    reddit.path = path
-    reddit.download()
-
+    try:
+        reddit = Downloader(max_q=True)
+        reddit.url = url
+        reddit.path = path
+        reddit.download()
+    except Exception as e:
+        print(f"Could not download video. Error: {str(e)}")
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-def main_period():
-    sub = 'funny'
-    period = 'day'
+def main_period(sub,period):
+    #sub = 'funny'
+    #period = 'day'
     global working_dir
     today = datetime.today().strftime('%m-%d-%Y')
     dlList = get_dl_list_period(f'{sub}',f'{period}')
@@ -299,7 +283,10 @@ def main_period():
         sani_title = cleanString(post[0])
 
         # Download video and store in working directory
-        download_video(post[1],working_dir)
+        try:
+            download_video(post[1],working_dir)
+        except:
+            return
         time.sleep(0.500)
 
         # Rename video file
@@ -308,50 +295,80 @@ def main_period():
         try:
             Path(old_filename[0]).rename(new_filename)
         except:
-            continue
-        v_hash = VideoHash(path=f"{new_filename}")
-        url = str(post[1])
-        # Add video hash to database
-        add_videohash_to_db(sub,v_hash.hash,url)
+            return
+        # v_hash = VideoHash(path=f"{new_filename}")
+        # url = str(post[1])
+        # # Add video hash to database
+        # add_videohash_to_db(sub,v_hash.hash,url)
 
         print(f'Moving {old_filename[0]} to {new_filename}')
-      
-
-# Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
-
-def main_num(sub,num):
-    #sub = 'funny'
-    #period = 'day'
-    global working_dir
-    today = datetime.today().strftime('%m-%d-%Y')
-    playlist = get_video_posts_num(f'{sub}',num)
-    # uuid_value = str(uuid.uuid4())
-    # parent_dir = working_dir
-    path = f'{storage_dir}/{sub}_Top_{num}_{today}/'
-    os.mkdir(path)
-
-    for post in playlist:
-        print (post["permalink"])
-        sani_title = cleanString(post["title"])
-        download_video(post["permalink"],working_dir)
-        time.sleep(0.500)
-        old_filename = glob.glob(f"{working_dir}/*.mp4")
-        new_filename = f'{storage_dir}/{sub}_Top_{num}_{today}/{sani_title}.mp4'
-        try:
-            Path(old_filename[0]).rename(new_filename)
-        except:
-            continue
-        print(f'Moving {old_filename[0]} to {new_filename}')
 
 
-def main(sub,num):
-    postlist = get_reddit_list_number(sub,num)
-    store_reddit_posts(sub,postlist)
-
-
-def grab_dat():
+def update_DB(num):
     global sublist
     for sub in sublist:
         drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
-        main(sub,5000)
+        postlist = get_reddit_list_number(sub,num)
+        store_reddit_posts(sub,postlist)
+
+
+def grab_dat(period):
+    global sublist
+    for sub in sublist:
+        main_period(sub, period)
+
+
+
+
+#### OLD ####
+
+# Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
+
+# def main_num(sub,num):
+#     #sub = 'funny'
+#     #period = 'day'
+#     global working_dir
+#     today = datetime.today().strftime('%m-%d-%Y')
+#     playlist = get_video_posts_num(f'{sub}',num)
+#     # uuid_value = str(uuid.uuid4())
+#     # parent_dir = working_dir
+#     path = f'{storage_dir}/{sub}_Top_{num}_{today}/'
+#     os.mkdir(path)
+
+#     for post in playlist:
+#         print (post["permalink"])
+#         sani_title = cleanString(post["title"])
+#         download_video(post["permalink"],working_dir)
+#         time.sleep(0.500)
+#         old_filename = glob.glob(f"{working_dir}/*.mp4")
+#         new_filename = f'{storage_dir}/{sub}_Top_{num}_{today}/{sani_title}.mp4'
+#         try:
+#             Path(old_filename[0]).rename(new_filename)
+#         except:
+#             continue
+#         print(f'Moving {old_filename[0]} to {new_filename}')
+
+# def get_video_posts_num(sub,num):
+#     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+#     video_urllist = []
+#     #sub = 'funny'
+#     #num = 500
+#     for post in get_reddit_list_number(f'{sub}',num):
+#         if post["permalink"]:
+#             if post["permalink"][len(post["permalink"])-1] == '/':
+#                 json_url = post["permalink"][:len(post["permalink"])-1]+'.json'
+#             else:
+#                 json_url = post["permalink"] + '.json'
+#             json_response = requests.get(json_url, 
+#                             headers= headers)
+#             if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
+#                 json_urllist = {
+#                     "id": json_response.json()[0]['data']['children'][0]['data']['id'],
+#                     "permalink": post["permalink"],
+#                     "title": json_response.json()[0]['data']['children'][0]['data']['title']
+#                     }
+#                 video_urllist.append(json_urllist)
+#             elif json_response.status_code != 200:
+#                 print("Error Detected, check the URL!!!")
+#     return video_urllist  
