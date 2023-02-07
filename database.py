@@ -1,5 +1,5 @@
 import mysql.connector as db
-import praw, requests, glob
+import praw, glob
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
@@ -25,11 +25,10 @@ def create_db_connection():
             password=user_password,
             database=db_name
         )
-        print("MySQL Database connection successful")
     except db.Error as err:
         print(f"Error: '{err}'")
-
     return connection
+
 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
@@ -43,12 +42,13 @@ sublist = [
             "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
             "eyebleach",        # https://reddit.com/r/eyebleach
             "humansbeingbros"   # https://reddit.com/r/humansbeingbros
-
+    
         ]
 
 def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
     #remove the undesireable characters
     return ''.join([c for c in sourcestring if c not in removestring])
+
 
 ######################
 ######## SQL #########
@@ -75,7 +75,7 @@ def create_sub_table(sub):
             stickied BOOL,
             permalink varchar(255),
             path varchar(255),
-            videohash varchar(255),
+            videohash binary(66),
             is_downloaded BOOL,
             PRIMARY KEY (id)
                 );
@@ -91,7 +91,6 @@ def create_sub_table(sub):
         if connection.is_connected():
             connection.close()
             cursor.close()
-            print("SQL connection is closed")
 
 
 def drop_table(table):
@@ -107,7 +106,6 @@ def drop_table(table):
         if connection.is_connected():
             connection.close()
             cursor.close()
-            print("SQL connection is closed")
 
 
 def store_reddit_posts(sub, postlist):
@@ -148,7 +146,6 @@ def store_reddit_posts(sub, postlist):
     if connection.is_connected():
         connection.close()
         cursor.close()
-        print("SQL connection is closed")
     return print(f"Successfully added {entrycount} entries to database")
 
 
@@ -177,7 +174,7 @@ def get_dl_list_period(sub,period):
     try:
         select_Query = f"""
         
-        SELECT title,permalink from subreddit_{sub}
+        SELECT title,permalink,id from subreddit_{sub}
         WHERE created_utc BETWEEN "{start_date}" AND "{end_date}"
         
         """
@@ -194,19 +191,19 @@ def get_dl_list_period(sub,period):
         if connection.is_connected():
             connection.close()
             cursor.close()
-            print("SQL connection is closed")
     return dl_list
 
-def add_videohash_to_db(sub,v_hash,permalink):
+
+def add_videohash_to_db(sub,v_hash,id):
     connection = create_db_connection()
     cursor = connection.cursor()
     try:
-        sql = "UPDATE subreddit_%s SET videohash = %s WHERE permalink = %s"
-        val = ({sub},{v_hash},{permalink})
+        sql = "UPDATE subreddit_{} SET videohash = '{}' WHERE id = '{}'".format(sub,v_hash,id)
+        print(sql)
 
-        cursor.execute(sql, val)
+        cursor.execute(sql)
 
-        db.commit()
+        connection.commit()
 
         print(cursor.rowcount, "record(s) affected")
 
@@ -215,15 +212,21 @@ def add_videohash_to_db(sub,v_hash,permalink):
 
 ####### END SQL FUNCTIONS #######
 
-####### REDDIT FUNCTIONS #######
 
-def get_reddit_list_number(sub,num):
-    # Get the requested number of new posts from the subreddit with minimum upvotes required
-    # and return a post list to upload to the database.
+######################
+####### REDDIT #######
+######################
 
-    # Submit: Subreddit (sub) and number (num) of posts to get
-    # Return: Number of posts requested including id, title, author, score, etc.
+# get_reddit_list: Get reddit posts and store in a list
 
+# Get the requested number of new posts from the subreddit with minimum upvotes required
+# and return a post list to upload to the database.
+
+# Submit: Subreddit (sub) and number (num) of posts to get
+# Return: Number of posts requested including id, title, author, score, etc.
+
+def get_reddit_list(sub):
+    num = 1000
     posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
     postlist = []
     for post in posts:
@@ -263,9 +266,10 @@ def download_video(url,path):
     except Exception as e:
         print(f"Could not download video. Error: {str(e)}")
 
+
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-def main_period(sub,period):
+def main_dl_period(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
@@ -277,14 +281,17 @@ def main_period(sub,period):
     isExist = os.path.exists(path)
     if not isExist:
         os.mkdir(path)
-
+    
+    # Download each video post
     for post in dlList:
         print (post[1])
         sani_title = cleanString(post[0])
+        id = post[2]
+        url = post[1]
 
         # Download video and store in working directory
         try:
-            download_video(post[1],working_dir)
+            download_video(url,working_dir)
         except:
             return
         time.sleep(0.500)
@@ -296,27 +303,31 @@ def main_period(sub,period):
             Path(old_filename[0]).rename(new_filename)
         except:
             return
-        # v_hash = VideoHash(path=f"{new_filename}")
-        # url = str(post[1])
-        # # Add video hash to database
-        # add_videohash_to_db(sub,v_hash.hash,url)
+
+        v_hash = VideoHash(path=f"{new_filename}")
+        url = str(post[1])
+        hash_value = v_hash.hash
+        print(f'Video hash: {hash_value}')
+
+        # Add video hash to database
+        add_videohash_to_db(sub,hash_value,id)
 
         print(f'Moving {old_filename[0]} to {new_filename}')
 
 
-def update_DB(num):
+def update_DB():
     global sublist
     for sub in sublist:
         drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
-        postlist = get_reddit_list_number(sub,num)
+        postlist = get_reddit_list(sub)
         store_reddit_posts(sub,postlist)
 
 
 def grab_dat(period):
     global sublist
     for sub in sublist:
-        main_period(sub, period)
+        main_dl_period(sub, period)
 
 
 
