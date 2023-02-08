@@ -1,10 +1,10 @@
 import mysql.connector as db
-import praw, glob
+import os,time,praw,glob,urllib.parse,uuid
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
-import os,time
 from datetime import datetime, timedelta
+from azure.storage.blob import ContainerClient
 
 debug = False
 
@@ -33,6 +33,10 @@ def create_db_connection():
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
+
+AZURE_STORAGE_ACCOUNT_NAME = "***REMOVED***"
+AZURE_STORAGE_CONTAINER_NAME = "appstorage"
+AZURE_STORAGE_ACCOUNT_KEY = "***REMOVED***"
 
 sublist = [
 
@@ -194,11 +198,11 @@ def get_dl_list_period(sub,period):
     return dl_list
 
 
-def add_videohash_to_db(sub,v_hash,id):
+def update_item_db(sub,v_hash,id,blob_url):
     connection = create_db_connection()
     cursor = connection.cursor()
     try:
-        sql = "UPDATE subreddit_{} SET videohash = '{}' WHERE id = '{}'".format(sub,v_hash,id)
+        sql = "UPDATE subreddit_{} SET videohash = '{}', path = '{}' WHERE id = '{}'".format(sub,v_hash,blob_url,id)
         print(sql)
 
         cursor.execute(sql)
@@ -266,6 +270,22 @@ def download_video(url,path):
     except Exception as e:
         print(f"Could not download video. Error: {str(e)}")
 
+def upload_video_to_blob_storage(video_path,folder):
+    container_client = ContainerClient.from_connection_string(
+        "DefaultEndpointsProtocol=https;AccountName=***REMOVED***;AccountKey=***REMOVED***;EndpointSuffix=core.windows.net",
+        container_name=AZURE_STORAGE_CONTAINER_NAME
+    )
+    blob_client = container_client.get_blob_client("{}/{}".format(folder,os.path.basename(video_path)))
+    with open(video_path, "rb") as data:
+        try:
+            blob_client.upload_blob(data)
+        except Exception as e:
+            print(f"Could not upload video to blob storage. Error: {str(e)}")
+    path = os.path.basename(video_path)
+    encoded_path = urllib.parse.quote(path)
+
+    return f"https://***REMOVED***.blob.core.windows.net/appstorage/{folder}/{encoded_path}"
+
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
@@ -309,9 +329,13 @@ def main_dl_period(sub,period):
         hash_value = v_hash.hash
         print(f'Video hash: {hash_value}')
 
-        # Add video hash to database
-        add_videohash_to_db(sub,hash_value,id)
+        folder = f'{sub}_{period}_{today}'
+        blob_url = upload_video_to_blob_storage(new_filename,folder)
 
+        # Add video hash and path to database
+        update_item_db(sub,hash_value,id,blob_url)
+
+        print(blob_url)
         print(f'Moving {old_filename[0]} to {new_filename}')
 
 
@@ -328,7 +352,6 @@ def grab_dat(period):
     global sublist
     for sub in sublist:
         main_dl_period(sub, period)
-
 
 
 
