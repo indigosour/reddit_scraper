@@ -36,7 +36,6 @@ storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
 
 AZURE_STORAGE_ACCOUNT_NAME = "***REMOVED***"
 AZURE_STORAGE_CONTAINER_NAME = "appstorage"
-AZURE_STORAGE_ACCOUNT_KEY = "***REMOVED***"
 
 sublist = [
 
@@ -203,13 +202,13 @@ def update_item_db(sub,v_hash,id,blob_url):
     cursor = connection.cursor()
     try:
         sql = "UPDATE subreddit_{} SET videohash = '{}', path = '{}' WHERE id = '{}'".format(sub,v_hash,blob_url,id)
-        print(sql)
+        #print(sql)
 
         cursor.execute(sql)
 
         connection.commit()
 
-        print(cursor.rowcount, "record(s) affected")
+        print(cursor.rowcount, "record(s) updated")
 
     except db.Error as e:
         print("Error inserting data into table", e)
@@ -233,8 +232,22 @@ def get_reddit_list(sub):
     num = 1000
     posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
     postlist = []
+    
+    if sub == "tiktokcringe":
+        required_score = 1000
+    elif sub == "unexpected":
+        required_score = 700
+    elif sub == "funny":
+        required_score = 500
+    elif sub == "whatcouldgowrong":
+        required_score = 500
+    elif sub == "eyebleach":
+        required_score = 500
+    elif sub == "humansbeingbros":
+        required_score = 500
+    
     for post in posts:
-        if post.author != None and post.score > 700:
+        if post.author != None and post.score > required_score:
             try:
                 if debug: 
                     print(post)
@@ -327,7 +340,8 @@ def main_dl_period(sub,period):
         v_hash = VideoHash(path=f"{new_filename}")
         url = str(post[1])
         hash_value = v_hash.hash
-        print(f'Video hash: {hash_value}')
+        if debug:
+            print(f'Video hash: {hash_value}')
 
         folder = f'{sub}_{period}_{today}'
         blob_url = upload_video_to_blob_storage(new_filename,folder)
@@ -335,7 +349,8 @@ def main_dl_period(sub,period):
         # Add video hash and path to database
         update_item_db(sub,hash_value,id,blob_url)
 
-        print(blob_url)
+        if debug:
+            print(blob_url)
         print(f'Moving {old_filename[0]} to {new_filename}')
 
 
