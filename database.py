@@ -1,10 +1,13 @@
 import mysql.connector as db
-import os,time,praw,glob,urllib.parse,uuid
+import os,time,praw,glob,urllib.parse
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
 from datetime import datetime, timedelta
 from azure.storage.blob import ContainerClient
+from pmaw import PushshiftAPI
+
+api = PushshiftAPI()
 
 debug = False
 
@@ -29,7 +32,7 @@ def create_db_connection():
         print(f"Error: '{err}'")
     return connection
 
-
+ 
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
@@ -228,11 +231,52 @@ def update_item_db(sub,v_hash,id,blob_url):
 # Submit: Subreddit (sub) and number (num) of posts to get
 # Return: Number of posts requested including id, title, author, score, etc.
 
-def get_reddit_list(sub):
-    num = 1000
-    posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
-    postlist = []
+# def get_reddit_list(sub):
+#     num = 1000
+#     posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
     
+#     postlist = []
+    
+#     if sub == "tiktokcringe":
+#         required_score = 1000
+#     elif sub == "unexpected":
+#         required_score = 700
+#     elif sub == "funny":
+#         required_score = 500
+#     elif sub == "whatcouldgowrong":
+#         required_score = 500
+#     elif sub == "eyebleach":
+#         required_score = 500
+#     elif sub == "humansbeingbros":
+#         required_score = 500
+    
+#     for post in posts:
+#         if post.author != None and post.score > required_score:
+#             try:
+#                 if debug: 
+#                     print(post)
+#                 postlist.append({
+#                 "id": post.id,
+#                 "title": cleanString(post.title),
+#                 "author": post.author.name,
+#                 "score": post.score,
+#                 "upvote_ratio": post.upvote_ratio,
+#                 "num_comments": post.num_comments,
+#                 "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+#                 "flair": post.link_flair_text,
+#                 "is_original_content": post.is_original_content,
+#                 "is_self": post.is_self,
+#                 "over_18": post.over_18,
+#                 "stickied": post.stickied,
+#                 "permalink": "https://reddit.com" + post.permalink,
+#                 })
+                
+#             except Exception as e:
+#                 print(e)
+#     return postlist
+
+def get_reddit_list(sub):
+
     if sub == "tiktokcringe":
         required_score = 1000
     elif sub == "unexpected":
@@ -245,26 +289,30 @@ def get_reddit_list(sub):
         required_score = 500
     elif sub == "humansbeingbros":
         required_score = 500
+
+    posts = api.search_submissions(subreddit={sub}, score={required_score}, limit=10)
     
+    postlist = []
+
     for post in posts:
-        if post.author != None and post.score > required_score:
+        if post['author_fullname'] != None:
             try:
                 if debug: 
                     print(post)
                 postlist.append({
-                "id": post.id,
-                "title": cleanString(post.title),
-                "author": post.author.name,
-                "score": post.score,
-                "upvote_ratio": post.upvote_ratio,
-                "num_comments": post.num_comments,
-                "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
-                "flair": post.link_flair_text,
-                "is_original_content": post.is_original_content,
-                "is_self": post.is_self,
-                "over_18": post.over_18,
-                "stickied": post.stickied,
-                "permalink": "https://reddit.com" + post.permalink,
+                "id": post['id'],
+                "title": cleanString(post['title']),
+                "author": post['author_fullname'],
+                "score": post['score'],
+                "upvote_ratio": post['upvote_ratio'],
+                "num_comments": post['num_comments'],
+                "created_utc": str(datetime.fromtimestamp(int(post['created_utc'])).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+                "flair": post['link_flair_text'],
+                "is_original_content": post['is_original_content'],
+                "is_self": post['is_self'],
+                "over_18": post['over_18'],
+                "stickied": post['stickied'],
+                "permalink": "https://reddit.com" + post['permalink'],
                 })
                 
             except Exception as e:
@@ -354,10 +402,17 @@ def main_dl_period(sub,period):
         print(f'Moving {old_filename[0]} to {new_filename}')
 
 
+
+def get_submissions_period(sub):
+    posts = api.search_submissions(score=1000, subreddit={sub}, limit=100)
+    post_list = [post for post in posts]
+    return post_list
+
+
 def update_DB():
     global sublist
     for sub in sublist:
-        drop_table(f"subreddit_{sub}")
+        # drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
         postlist = get_reddit_list(sub)
         store_reddit_posts(sub,postlist)
