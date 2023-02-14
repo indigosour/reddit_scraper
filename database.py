@@ -1,5 +1,5 @@
 import mysql.connector as db
-import os,time,praw,glob,urllib.parse
+import os,time,praw,glob,urllib.parse,pprint
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
@@ -11,7 +11,7 @@ api = PushshiftAPI()
 
 debug = False
 
-reddit_read_only = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
+reddit = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client id
                                client_secret="ofL3-C58gmXaHgiGHYJ_Mx4MdmOd3w",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
@@ -42,13 +42,35 @@ AZURE_STORAGE_CONTAINER_NAME = "appstorage"
 
 sublist = [
 
-            "tiktokcringe",     # https://reddit.com/r/tiktokcringe
-            "unexpected",       # https://reddit.com/r/unexpected
-            "funny",            # https://reddit.com/r/funny
-            "whatcouldgowrong", # https://reddit.com/r/whatcouldgowrong
-            "eyebleach",        # https://reddit.com/r/eyebleach
-            "humansbeingbros"   # https://reddit.com/r/humansbeingbros
-    
+            "unexpected",
+            "funny",
+            "whatcouldgowrong",
+            "eyebleach",
+            "humansbeingbros",
+            "contagiouslaughter",
+            "unexpectedthuglife",
+            "therewasanattempt",
+            "Damnthatsinteresting",
+            "nextfuckinglevel",
+            "oddlysatisfying",
+            "HumansBeingBros",
+            "AnimalsBeingBros",
+            "funnyanimals",
+            "maybemaybemaybe",
+            "beamazed",
+            "aww",
+            "tiktokcringe",
+            "blackmagicfuckery",
+            "MadeMeSmile",
+            "dankvideos",
+            "perfectlycutscreams",
+            "PraiseTheCameraMan",
+            "publicfreakout",
+            "PeopleFuckingDying",
+            "yesyesyesyesno",
+            "AnimalsBeingJerks",
+            "nonononoyes"
+
         ]
 
 def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
@@ -231,94 +253,35 @@ def update_item_db(sub,v_hash,id,blob_url):
 # Submit: Subreddit (sub) and number (num) of posts to get
 # Return: Number of posts requested including id, title, author, score, etc.
 
-# def get_reddit_list(sub):
-#     num = 1000
-#     posts = reddit_read_only.subreddit(f'{sub}').new(limit=num)
-    
-#     postlist = []
-    
-#     if sub == "tiktokcringe":
-#         required_score = 1000
-#     elif sub == "unexpected":
-#         required_score = 700
-#     elif sub == "funny":
-#         required_score = 500
-#     elif sub == "whatcouldgowrong":
-#         required_score = 500
-#     elif sub == "eyebleach":
-#         required_score = 500
-#     elif sub == "humansbeingbros":
-#         required_score = 500
-    
-#     for post in posts:
-#         if post.author != None and post.score > required_score:
-#             try:
-#                 if debug: 
-#                     print(post)
-#                 postlist.append({
-#                 "id": post.id,
-#                 "title": cleanString(post.title),
-#                 "author": post.author.name,
-#                 "score": post.score,
-#                 "upvote_ratio": post.upvote_ratio,
-#                 "num_comments": post.num_comments,
-#                 "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
-#                 "flair": post.link_flair_text,
-#                 "is_original_content": post.is_original_content,
-#                 "is_self": post.is_self,
-#                 "over_18": post.over_18,
-#                 "stickied": post.stickied,
-#                 "permalink": "https://reddit.com" + post.permalink,
-#                 })
-                
-#             except Exception as e:
-#                 print(e)
-#     return postlist
-
-def get_reddit_list(sub):
-
-    if sub == "tiktokcringe":
-        required_score = 1000
-    elif sub == "unexpected":
-        required_score = 700
-    elif sub == "funny":
-        required_score = 500
-    elif sub == "whatcouldgowrong":
-        required_score = 500
-    elif sub == "eyebleach":
-        required_score = 500
-    elif sub == "humansbeingbros":
-        required_score = 500
-
-    posts = api.search_submissions(subreddit={sub}, score={required_score}, limit=10)
+def get_reddit_list(sub,period):
+    num = 1000
+    posts = reddit.subreddit(f'{sub}').top(time_filter=f'{period}',limit=num)
     
     postlist = []
-
+    
     for post in posts:
-        if post['author_fullname'] != None:
+        if post.author != None and post.is_video == True:
             try:
                 if debug: 
                     print(post)
                 postlist.append({
-                "id": post['id'],
-                "title": cleanString(post['title']),
-                "author": post['author_fullname'],
-                "score": post['score'],
-                "upvote_ratio": post['upvote_ratio'],
-                "num_comments": post['num_comments'],
-                "created_utc": str(datetime.fromtimestamp(int(post['created_utc'])).strftime('%Y-%m-%d %H:%M:%S')).strip(),
-                "flair": post['link_flair_text'],
-                "is_original_content": post['is_original_content'],
-                "is_self": post['is_self'],
-                "over_18": post['over_18'],
-                "stickied": post['stickied'],
-                "permalink": "https://reddit.com" + post['permalink'],
-                })
-                
+                "id": post.id,
+                "title": cleanString(post.title),
+                "author": post.author.name,
+                "score": post.score,
+                "upvote_ratio": post.upvote_ratio,
+                "num_comments": post.num_comments,
+                "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+                "flair": post.link_flair_text,
+                "is_original_content": post.is_original_content,
+                "is_self": post.is_self,
+                "over_18": post.over_18,
+                "stickied": post.stickied,
+                "permalink": "https://reddit.com" + post.permalink,
+                })            
             except Exception as e:
                 print(e)
     return postlist
-
 
 # Download video posts
 
@@ -414,8 +377,9 @@ def update_DB():
     for sub in sublist:
         # drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
-        postlist = get_reddit_list(sub)
-        store_reddit_posts(sub,postlist)
+        for period in ["week","month","year","all"]:
+            postlist = get_reddit_list(sub,period)
+            store_reddit_posts(sub,postlist)
 
 
 def grab_dat(period):
@@ -476,3 +440,50 @@ def grab_dat(period):
 #             elif json_response.status_code != 200:
 #                 print("Error Detected, check the URL!!!")
 #     return video_urllist  
+
+#### Pushshift.io Method #######
+
+# def get_reddit_list(sub):
+
+#     if sub == "tiktokcringe":
+#         required_score = 1000
+#     elif sub == "unexpected":
+#         required_score = 700
+#     elif sub == "funny":
+#         required_score = 500
+#     elif sub == "whatcouldgowrong":
+#         required_score = 500
+#     elif sub == "eyebleach":
+#         required_score = 500
+#     elif sub == "humansbeingbros":
+#         required_score = 500
+
+#     posts = api.search_submissions(subreddit={sub}, score={required_score}, limit=10)
+    
+#     postlist = []
+
+#     for post in posts:
+#         if post['author_fullname'] != None:
+#             try:
+#                 if debug: 
+#                     print(post)
+#                 postlist.append({
+#                 "id": post['id'],
+#                 "title": cleanString(post['title']),
+#                 "author": post['author_fullname'],
+#                 "score": post['score'],
+#                 "upvote_ratio": post['upvote_ratio'],
+#                 "num_comments": post['num_comments'],
+#                 "created_utc": str(datetime.fromtimestamp(int(post['created_utc'])).strftime('%Y-%m-%d %H:%M:%S')).strip(),
+#                 "flair": post['link_flair_text'],
+#                 "is_original_content": post['is_original_content'],
+#                 "is_self": post['is_self'],
+#                 "over_18": post['over_18'],
+#                 "stickied": post['stickied'],
+#                 "permalink": "https://reddit.com" + post['permalink'],
+#                 })
+                
+#             except Exception as e:
+#                 print(e)
+#         return
+#     return postlist
