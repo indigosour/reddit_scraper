@@ -50,25 +50,24 @@ sublist = [
             "contagiouslaughter",
             "unexpectedthuglife",
             "therewasanattempt",
-            "Damnthatsinteresting",
+            "damnthatsinteresting",
             "nextfuckinglevel",
             "oddlysatisfying",
-            "HumansBeingBros",
-            "AnimalsBeingBros",
+            "animalsbeingbros",
             "funnyanimals",
             "maybemaybemaybe",
             "beamazed",
             "aww",
             "tiktokcringe",
             "blackmagicfuckery",
-            "MadeMeSmile",
+            "mademesmile",
             "dankvideos",
             "perfectlycutscreams",
-            "PraiseTheCameraMan",
+            "praisethecameraman",
             "publicfreakout",
-            "PeopleFuckingDying",
+            "peoplefuckingdying",
             "yesyesyesyesno",
-            "AnimalsBeingJerks",
+            "animalsbeingjerks",
             "nonononoyes"
 
         ]
@@ -170,7 +169,9 @@ def store_reddit_posts(sub, postlist):
             #print("Successfully added entry to database")
             entrycount+=1
         except db.Error as e:
-            print("Error inserting data into table", e)
+            if e.errno != 1062:
+                print("Error inserting data into table", e)
+            continue
     if connection.is_connected():
         connection.close()
         cursor.close()
@@ -377,9 +378,13 @@ def update_DB():
     for sub in sublist:
         # drop_table(f"subreddit_{sub}")
         create_sub_table(f"{sub}")
+        print(f"Table {sub} created moving on to download posts")
         for period in ["week","month","year","all"]:
+            print(f'Gathering top posts from {sub} for the {period}...')
             postlist = get_reddit_list(sub,period)
+            print(f'Found {len(postlist)} posts. Now storing them...')
             store_reddit_posts(sub,postlist)
+            print(f'Finished storing top of {sub} for the {period}')
 
 
 def grab_dat(period):
