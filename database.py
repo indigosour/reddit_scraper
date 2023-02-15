@@ -1,13 +1,10 @@
 import mysql.connector as db
-import os,time,praw,glob,urllib.parse,pprint
+import os,time,praw,glob,urllib.parse
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
 from datetime import datetime, timedelta
 from azure.storage.blob import ContainerClient
-from pmaw import PushshiftAPI
-
-api = PushshiftAPI()
 
 debug = False
 
@@ -32,10 +29,10 @@ def create_db_connection():
         print(f"Error: '{err}'")
     return connection
 
- 
+
 # Variables
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
-storage_dir = (os.path.dirname(os.path.realpath(__file__))) + "/storage"
+storage_dir = "/mnt/appstorage/video"
 
 AZURE_STORAGE_ACCOUNT_NAME = "tubelrone"
 AZURE_STORAGE_CONTAINER_NAME = "appstorage"
@@ -295,22 +292,6 @@ def download_video(url,path):
     except Exception as e:
         print(f"Could not download video. Error: {str(e)}")
 
-def upload_video_to_blob_storage(video_path,folder):
-    container_client = ContainerClient.from_connection_string(
-        "DefaultEndpointsProtocol=https;AccountName=tubelrone;AccountKey=KMiRouT+bzXDNxwjAR5c3dHmxCEtG6Ry5d3P+eiQnQF+bK4Y/Peo31bwt82Au+tInqdzAIYQc3FK+AStpuX6Aw==;EndpointSuffix=core.windows.net",
-        container_name=AZURE_STORAGE_CONTAINER_NAME
-    )
-    blob_client = container_client.get_blob_client("{}/{}".format(folder,os.path.basename(video_path)))
-    with open(video_path, "rb") as data:
-        try:
-            blob_client.upload_blob(data)
-        except Exception as e:
-            print(f"Could not upload video to blob storage. Error: {str(e)}")
-    path = os.path.basename(video_path)
-    encoded_path = urllib.parse.quote(path)
-
-    return f"https://tubelrone.blob.core.windows.net/appstorage/{folder}/{encoded_path}"
-
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
@@ -331,6 +312,8 @@ def main_dl_period(sub,period):
     for post in dlList:
         print (post[1])
         sani_title = cleanString(post[0])
+        old_filename = glob.glob(f"{working_dir}/*.mp4")
+        new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
         id = post[2]
         url = post[1]
 
@@ -342,8 +325,6 @@ def main_dl_period(sub,period):
         time.sleep(0.500)
 
         # Rename video file
-        old_filename = glob.glob(f"{working_dir}/*.mp4")
-        new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
         try:
             Path(old_filename[0]).rename(new_filename)
         except:
@@ -355,29 +336,19 @@ def main_dl_period(sub,period):
         if debug:
             print(f'Video hash: {hash_value}')
 
-        folder = f'{sub}_{period}_{today}'
-        blob_url = upload_video_to_blob_storage(new_filename,folder)
-
         # Add video hash and path to database
-        update_item_db(sub,hash_value,id,blob_url)
+        update_item_db(sub,hash_value,id,path)
 
         if debug:
-            print(blob_url)
+            print(path)
         print(f'Moving {old_filename[0]} to {new_filename}')
-
-
-
-def get_submissions_period(sub):
-    posts = api.search_submissions(score=1000, subreddit={sub}, limit=100)
-    post_list = [post for post in posts]
-    return post_list
 
 
 def update_DB():
     global sublist
     for sub in sublist:
         # drop_table(f"subreddit_{sub}")
-        create_sub_table(f"{sub}")
+        # create_sub_table(f"{sub}")
         print(f"Table {sub} created moving on to download posts")
         for period in ["week","month","year","all"]:
             print(f'Gathering top posts from {sub} for the {period}...')
