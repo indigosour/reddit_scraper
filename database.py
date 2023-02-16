@@ -1,10 +1,12 @@
 import mysql.connector as db
-import os,time,praw,glob,urllib.parse
+import os,time,praw,glob,requests
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
 from datetime import datetime, timedelta
-from azure.storage.blob import ContainerClient
+import peertube
+from peertube.rest import ApiException
+from pprint import pprint
 
 debug = False
 
@@ -12,25 +14,19 @@ reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
                                client_secret="***REMOVED***",      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
-def create_db_connection():
-    connection = None
-    user_name = "***REMOVED***"
-    user_password = "***REMOVED***"
-    host_name = "172.18.0.3"
-    db_name = "reddit_scraper"
-    try:
-        connection = db.connect(
-            host=host_name,
-            user=user_name,
-            password=user_password,
-            database=db_name
-        )
-    except db.Error as err:
-        print(f"Error: '{err}'")
-    return connection
+# Variables and config
+
+peertube_api_url = "***REMOVED***"
+peertube_api_user = "***REMOVED***"
+peertube_api_pass = "***REMOVED***"
+
+response = requests.get(peertube_api_url + '/oauth-clients/local')
+data = response.json()
+client_id = data['client_id']
+client_secret = data['client_secret']
 
 
-# Variables
+
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 storage_dir = "/mnt/appstorage/video"
 
@@ -77,6 +73,24 @@ def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
 ######################
 ######## SQL #########
 ######################
+
+def create_db_connection():
+    connection = None
+    user_name = "***REMOVED***"
+    user_password = "***REMOVED***"
+    host_name = "172.18.0.3"
+    db_name = "reddit_scraper"
+    try:
+        connection = db.connect(
+            host=host_name,
+            user=user_name,
+            password=user_password,
+            database=db_name
+        )
+    except db.Error as err:
+        print(f"Error: '{err}'")
+    return connection
+
 
 def create_sub_table(sub):
     connection = create_db_connection()
@@ -293,6 +307,143 @@ def download_video(url,path):
         print(f"Could not download video. Error: {str(e)}")
 
 
+######################
+##### Peertube #######
+######################
+
+def get_token():
+    global client_id, client_secret, peertube_api_user, peertube_api_pass
+    data = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'password',
+        'response_type': 'code',
+        'username': peertube_api_user,
+        'password': peertube_api_pass
+    }
+
+    response = requests.post(peertube_api_url + '/users/token', data=data)
+    data = response.json()
+    token_type = data['token_type']
+    access_token = data['access_token']
+
+    return access_token
+
+configuration = peertube.Configuration(
+host = f'{peertube_api_url}'
+)
+configuration.access_token = get_token()
+
+
+# Upload video to peertube instance
+
+def upload_video(video_path,title,sub):
+    # video_path = "/home/john/code_repo/reddit_scraper/unexpected_day_2022-07-05.mp4"
+    # title = 'unexpected_day_2022-07-05'
+    # sub = "unexpected"
+    with peertube.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = peertube.VideoApi(api_client)
+
+    if sub == 'unexpected':
+        channel_id = 6
+    elif sub == 'publicfreakout':
+        channel_id = 7
+    else:
+        print('Not a valid channel_id')
+
+    videofile = video_path # file | Video file
+    name = title # str | Video name
+    privacy = 1 # VideoPrivacySet |  (optional)
+    # category = 56 # int | Video category (optional)
+    # description = 'description_example' # str | Video description (optional)
+    # wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
+    # tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
+
+    try:
+        # Upload a video
+        api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy)
+        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
+    except ApiException as e:
+        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+    return api_out
+
+
+# Create playlist in peertube
+
+def create_playlist(display_name,channel_id):
+    # Enter a context with an instance of the API client
+    with peertube.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = peertube.VideoPlaylistsApi(api_client)
+    privacy = 1 # VideoPlaylistPrivacySet |  (optional)
+    #description = 'description_example' # str | Video playlist description (optional)
+    video_channel_id = channel_id # int | Video channel in which the playlist will be published (optional)
+    try:
+        # Create a video playlist
+        api_response = api_instance.video_playlists_post(display_name, privacy=privacy, video_channel_id=video_channel_id)
+        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
+    except ApiException as e:
+        print("Exception when calling VideoPlaylistsApi->video_playlists_post: %s\n" % e)
+    return api_out
+
+
+# Add video to playlist
+
+def add_video_playlist(v_id,p_id):
+    configuration = peertube.Configuration(host = f'{peertube_api_url}/video-playlists/{p_id}/videos')
+    #configuration.access_token = get_token()
+    # Enter a context with an instance of the API client
+    with peertube.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = peertube.VideoPlaylistsApi(api_client)
+    try:
+        # Add a video in a playlist
+        api_instance.video_playlists_id_videos_post(v_id)
+    except ApiException as e:
+        print("Exception when calling VideoPlaylistsApi->video_playlists_id_videos_post: %s\n" % e)
+
+
+# Create channels
+
+def create_channel(sub):
+    with peertube.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+        api_instance = peertube.VideoChannelsApi(api_client)
+        video_channel_create = peertube.VideoChannelCreate(name=f'{sub}',display_name=f'r/{sub}') # VideoChannelCreate |  (optional)
+
+    try:
+        # Create a video channel
+        api_instance.video_channels_post(video_channel_create=video_channel_create)
+    except ApiException as e:
+        print("Exception when calling VideoChannelsApi->video_channels_post: %s\n" % e)
+
+
+# Get Video Channels
+
+def get_channels():
+    with peertube.ApiClient() as api_client:
+        # Create an instance of the API class
+        api_instance = peertube.VideoChannelsApi(api_client)
+        name = '***REMOVED***' # str | The name of the account
+    with_stats = True # bool | include view statistics for the last 30 days (only if authentified as the account user) (optional)
+    start = 56 # int | Offset used to paginate results (optional)
+    count = 15 # int | Number of items to return (optional) (default to 15)
+    sort = '-createdAt' # str | Sort column (optional)
+
+    try:
+        # List video channels of an account
+        api_response = api_instance.accounts_name_video_channels_get(name, with_stats=with_stats, start=start, count=count, sort=sort)
+        pprint(api_response)
+    except ApiException as e:
+        print("Exception when calling VideoChannelsApi->accounts_name_video_channels_get: %s\n" % e)
+
+
+
+###############################
+##### MAIN FUNCTIONS ##########
+###############################
+
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
 def main_dl_period(sub,period):
@@ -336,6 +487,8 @@ def main_dl_period(sub,period):
         if debug:
             print(f'Video hash: {hash_value}')
 
+        folder = f'{sub}_{period}_{today}'
+
         # Add video hash and path to database
         update_item_db(sub,hash_value,id,path)
 
@@ -362,7 +515,6 @@ def grab_dat(period):
     global sublist
     for sub in sublist:
         main_dl_period(sub, period)
-
 
 
 #### OLD ####
