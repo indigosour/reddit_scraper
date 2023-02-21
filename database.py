@@ -1,5 +1,5 @@
 import mysql.connector as db
-import os,time,praw,glob,requests
+import os,time,praw,glob,requests,emoji,re,json
 from videohash import VideoHash
 from pathlib import Path
 from redvid import Downloader
@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 import peertube
 from peertube.rest import ApiException
 from pprint import pprint
+
+from peertube.models import Account
+from peertube.api.video_channels_api import VideoChannelsApi
 
 debug = False
 
@@ -16,20 +19,8 @@ reddit = praw.Reddit(client_id="uM6URp2opqPfANoCdPE09g",         # your client i
 
 # Variables and config
 
-peertube_api_url = "https://tubelrone.com/api/v1"
-peertube_api_user = "autoupload1"
-peertube_api_pass = "BfWnTPT#Z@vF%Y6BPV%8xMjp%7vKS5"
-
-response = requests.get(peertube_api_url + '/oauth-clients/local')
-data = response.json()
-client_id = data['client_id']
-client_secret = data['client_secret']
-
-
-
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
-storage_dir = "/mnt/appstorage/video"
-
+peertube_api_url = "https://tubelrone.com/api/v1"
 AZURE_STORAGE_ACCOUNT_NAME = "tubelrone"
 AZURE_STORAGE_CONTAINER_NAME = "appstorage"
 
@@ -38,10 +29,8 @@ sublist = [
             "unexpected",
             "funny",
             "whatcouldgowrong",
-            "eyebleach",
             "humansbeingbros",
             "contagiouslaughter",
-            "unexpectedthuglife",
             "therewasanattempt",
             "damnthatsinteresting",
             "nextfuckinglevel",
@@ -65,9 +54,20 @@ sublist = [
 
         ]
 
-def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
-    #remove the undesireable characters
-    return ''.join([c for c in sourcestring if c not in removestring])
+channel_list = {
+
+                "unexpected":"1",
+                "funny":"2",
+                "whatcouldgowrong":"3"
+                
+            }
+
+
+def cleanString(sourcestring):
+    text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
+    pattern = r"[%:/,.\"\\[\]<>*\?]"
+    text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
+    return text_without_emoji
 
 
 ######################
@@ -76,9 +76,9 @@ def cleanString(sourcestring,  removestring ="%:/,.\"\\[]<>*?"):
 
 def create_db_connection():
     connection = None
-    user_name = "python_u"
-    user_password = "GxVpw3zwBYx7eJ8uX2jW844du4Bc2m"
-    host_name = "172.18.0.3"
+    user_name = "python_u@sapphiretube"
+    user_password = "3VtirKSv5SNRmm3bhmLm"
+    host_name = "sapphiretube.mariadb.database.azure.com"
     db_name = "reddit_scraper"
     try:
         connection = db.connect(
@@ -146,19 +146,23 @@ def drop_table(table):
             cursor.close()
 
 
+##### Store reddit posts in DB ######
+# Todo
+# - Add the ability to update existing entries with the latest score
+
 def store_reddit_posts(sub, postlist):
     connection = create_db_connection()
     cursor = connection.cursor()
     entrycount = 0
     for post in postlist:
         id = post['id']
-        title = post['title']
+        title = cleanString(post['title'])
         author = post['author']
         score = post['score']
         upvote_ratio = post['upvote_ratio']
         num_comments = post['num_comments']
         created_utc = post['created_utc']
-        flair = post['flair']
+        flair = cleanString(post['flair'])
         is_original_content = post['is_original_content']
         is_self = post['is_self']
         over_18 = post['over_18']
@@ -311,8 +315,15 @@ def download_video(url,path):
 ##### Peertube #######
 ######################
 
-def get_token():
-    global client_id, client_secret, peertube_api_user, peertube_api_pass
+def peertube_auth():
+    peertube_api_user = "autoupload1"
+    peertube_api_pass = "BfWnTPT#Z@vF%Y6BPV%8xMjp%7vKS5"
+
+    response = requests.get(peertube_api_url + '/oauth-clients/local')
+    data = response.json()
+    client_id = data['client_id']
+    client_secret = data['client_secret']
+
     data = {
         'client_id': client_id,
         'client_secret': client_secret,
@@ -322,51 +333,135 @@ def get_token():
         'password': peertube_api_pass
     }
 
-    response = requests.post(peertube_api_url + '/users/token', data=data)
+    response = requests.post( peertube_api_url + '/users/token', data=data)
     data = response.json()
     token_type = data['token_type']
     access_token = data['access_token']
 
     return access_token
 
-configuration = peertube.Configuration(
-host = f'{peertube_api_url}'
-)
-configuration.access_token = get_token()
+
+def list_channels():
+    headers = {
+	'Authorization': 'Bearer' + ' ' + peertube_auth()
+    }
+    params={'count': 50,'sort': '-createdAt'}
+    channel_list = {}
+    res = requests.get(url=f'{peertube_api_url}/video-channels', headers=headers, params=params)
+
+    try:
+        for i in res.json()['data']:
+            channel_list[i['displayName'].replace("r/","")] = i['id']
+    except json.decoder.JSONDecodeError as e:
+        print(f"Error decoding JSON: {e}")
+        print(f"Response content: {res.content}")
+    
+    return channel_list
 
 
 # Upload video to peertube instance
 
-def upload_video(video_path,title,sub):
-    # video_path = "/home/john/code_repo/reddit_scraper/unexpected_day_2022-07-05.mp4"
-    # title = 'unexpected_day_2022-07-05'
-    # sub = "unexpected"
-    with peertube.ApiClient(configuration) as api_client:
-        # Create an instance of the API class
-        api_instance = peertube.VideoApi(api_client)
+def start_upload_session():
+    video_path = "/home/azureuser/reddit_scraper/working/6t2vv3htlrga1-DASH_720.mp4"
+    title = 'Test vid'
+    sub = "aww"
+    filesize = str(os.path.getsize(video_path))
+    channel_list = list_channels()
 
-    if sub == 'unexpected':
-        channel_id = 6
-    elif sub == 'publicfreakout':
-        channel_id = 7
-    else:
-        print('Not a valid channel_id')
+    headers = {
+        'Authorization': 'Bearer ' + peertube_auth(),
+        'X-Upload-Content-Length': filesize,
+        'X-Upload-Content-Type': "video/mp4"
+    }
 
-    videofile = video_path # file | Video file
-    name = title # str | Video name
-    privacy = 1 # VideoPrivacySet |  (optional)
-    # category = 56 # int | Video category (optional)
-    # description = 'description_example' # str | Video description (optional)
-    # wait_transcoding = True # bool | Whether or not we wait transcoding before publish the video (optional)
-    # tags = 'tags_example' # list[str] | Video tags (maximum 5 tags each between 2 and 30 characters) (optional)
+    jdata = {
+        'channelId': channel_list[sub],
+        'name': title,
+        'filename': video_path
+    }
 
     try:
         # Upload a video
-        api_response = api_instance.videos_upload_post(videofile, channel_id, name, privacy=privacy)
-        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
-    except ApiException as e:
-        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
-    return api_out
+        res = requests.post(
+            url=f'{peertube_api_url}/videos/upload-resumable',
+            headers=headers,
+            json=jdata
+        )
+        print(res.text)
+    except requests.exceptions.RequestException as e:
+        print("Exception when uploading video: %s\n" % e)
+    return
+
+
+def upload_video(sub,title,video_path):
+    #video_path = "/home/azureuser/reddit_scraper/working/6t2vv3htlrga1-DASH_720.mp4"
+
+    # Get the size of the video file in bytes
+    filesize = str(os.path.getsize(video_path))
+
+    # Set the headers for the API request to initialize the upload
+    headers = {
+        "Authorization": "Bearer " + peertube_auth(),
+        "X-Upload-Content-Length": filesize,
+        "X-Upload-Content-Type": "video/mp4"
+    }
+
+    # Set the data for the API request to initialize the upload
+    data = {
+        "name": title,
+        "channelId": list_channels()[sub],
+        "filename": video_path
+    }
+
+    # Send the API request to initialize the upload
+    response = requests.post(
+        url=peertube_api_url + "/videos/upload-resumable",
+        headers=headers,
+        data=data
+    )
+
+    # Check if the request was successful and get the upload URL
+    if response.status_code == 200:
+        upload_url = response.headers["Location"]
+        print("Upload URL: " + upload_url)
+    else:
+        error_message = response.json()["error"]
+        print("Error: " + error_message)
+        exit()
+
+    # Send the video file in chunks
+    chunk_size = 1024 * 1024
+    start = 0
+    end = min(chunk_size, os.path.getsize(video_path) - 1)
+    while start <= os.path.getsize(video_path) - 1:
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{os.path.getsize(video_path)}"
+        }
+
+        with open(video_path, "rb") as f:
+            f.seek(start)
+            chunk = f.read(chunk_size)
+
+        response = requests.put(
+            url=upload_url,
+            headers=headers,
+            data=chunk
+        )
+
+        if response.status_code == 200:
+            print(response.json())
+            start = end + 1
+            end = min(start + chunk_size - 1, os.path.getsize(video_path) - 1)
+        elif response.status_code == 308:
+            range_header = response.headers["Range"]
+            print("Range header: " + range_header)
+            start = int(range_header.split("-")[1]) + 1
+            end = min(start + chunk_size - 1, os.path.getsize(video_path) - 1)
+        else:
+            error_message = response.json()["error"]
+            print("Error: " + error_message)
+            exit()
+
 
 
 # Create playlist in peertube
@@ -408,7 +503,6 @@ def add_video_playlist(v_id,p_id):
 
 def create_channel(sub):
     with peertube.ApiClient(configuration) as api_client:
-    # Create an instance of the API class
         api_instance = peertube.VideoChannelsApi(api_client)
         video_channel_create = peertube.VideoChannelCreate(name=f'{sub}',display_name=f'r/{sub}') # VideoChannelCreate |  (optional)
 
@@ -417,26 +511,6 @@ def create_channel(sub):
         api_instance.video_channels_post(video_channel_create=video_channel_create)
     except ApiException as e:
         print("Exception when calling VideoChannelsApi->video_channels_post: %s\n" % e)
-
-
-# Get Video Channels
-
-def get_channels():
-    with peertube.ApiClient() as api_client:
-        # Create an instance of the API class
-        api_instance = peertube.VideoChannelsApi(api_client)
-        name = 'autoupload1' # str | The name of the account
-    with_stats = True # bool | include view statistics for the last 30 days (only if authentified as the account user) (optional)
-    start = 56 # int | Offset used to paginate results (optional)
-    count = 15 # int | Number of items to return (optional) (default to 15)
-    sort = '-createdAt' # str | Sort column (optional)
-
-    try:
-        # List video channels of an account
-        api_response = api_instance.accounts_name_video_channels_get(name, with_stats=with_stats, start=start, count=count, sort=sort)
-        pprint(api_response)
-    except ApiException as e:
-        print("Exception when calling VideoChannelsApi->accounts_name_video_channels_get: %s\n" % e)
 
 
 
@@ -450,11 +524,7 @@ def main_dl_period(sub,period):
     #sub = 'funny'
     #period = 'day'
     global working_dir
-    today = datetime.today().strftime('%m-%d-%Y')
     dlList = get_dl_list_period(f'{sub}',f'{period}')
-    # uuid_value = str(uuid.uuid4())
-    # parent_dir = working_dir
-    path = f'{storage_dir}/{sub}_{period}_{today}/'
     isExist = os.path.exists(path)
     if not isExist:
         os.mkdir(path)
@@ -463,8 +533,7 @@ def main_dl_period(sub,period):
     for post in dlList:
         print (post[1])
         sani_title = cleanString(post[0])
-        old_filename = glob.glob(f"{working_dir}/*.mp4")
-        new_filename = f'{storage_dir}/{sub}_{period}_{today}/{sani_title}.mp4'
+        working_file = glob.glob(f"{working_dir}/*.mp4")
         id = post[2]
         url = post[1]
 
@@ -475,34 +544,39 @@ def main_dl_period(sub,period):
             return
         time.sleep(0.500)
 
-        # Rename video file
-        try:
-            Path(old_filename[0]).rename(new_filename)
-        except:
-            return
+        # Generate video hash
 
-        v_hash = VideoHash(path=f"{new_filename}")
+        v_hash = VideoHash(path=f"{working_file}")
         url = str(post[1])
         hash_value = v_hash.hash
         if debug:
             print(f'Video hash: {hash_value}')
 
-        folder = f'{sub}_{period}_{today}'
+        # Upload video to peertube
+        path = upload_video(path,sani_title,sub)
 
         # Add video hash and path to database
         update_item_db(sub,hash_value,id,path)
 
+
+
+        # # Rename video file
+        # try:
+        #     Path(old_filename[0]).rename(new_filename)
+        # except:
+        #     return
+
         if debug:
             print(path)
-        print(f'Moving {old_filename[0]} to {new_filename}')
+    return print("Completed downloading videos")
 
 
 def update_DB():
     global sublist
     for sub in sublist:
-        # drop_table(f"subreddit_{sub}")
-        # create_sub_table(f"{sub}")
-        print(f"Table {sub} created moving on to download posts")
+        #drop_table(f"subreddit_{sub}")
+        #create_sub_table(f"{sub}")
+        #print(f"Table {sub} created moving on to download posts")
         for period in ["week","month","year","all"]:
             print(f'Gathering top posts from {sub} for the {period}...')
             postlist = get_reddit_list(sub,period)
@@ -515,6 +589,7 @@ def grab_dat(period):
     global sublist
     for sub in sublist:
         main_dl_period(sub, period)
+        print(f'Completed downloading {sub}')
 
 
 #### OLD ####
