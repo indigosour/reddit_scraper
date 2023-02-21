@@ -394,125 +394,47 @@ def start_upload_session():
 
 
 def upload_video(sub,title,video_path):
-    #video_path = "/home/azureuser/reddit_scraper/working/6t2vv3htlrga1-DASH_720.mp4"
-
-    # Get the size of the video file in bytes
-    filesize = str(os.path.getsize(video_path))
-
-    # Set the headers for the API request to initialize the upload
+    filenamevar = os.path.basename(video_path)
+    data = {'channelId': list_channels()[sub], 'name': title, 'privacy': 1}
+    files = {
+        'videofile': (filenamevar,open(video_path, 'rb'),'video/mp4',{'Expires': '0'})}
     headers = {
-        "Authorization": "Bearer " + peertube_auth(),
-        "X-Upload-Content-Length": filesize,
-        "X-Upload-Content-Type": "video/mp4"
-    }
-
-    # Set the data for the API request to initialize the upload
-    data = {
-        "name": title,
-        "channelId": list_channels()[sub],
-        "filename": video_path
-    }
-
-    # Send the API request to initialize the upload
-    response = requests.post(
-        url=peertube_api_url + "/videos/upload-resumable",
-        headers=headers,
-        data=data
-    )
-
-    # Check if the request was successful and get the upload URL
-    if response.status_code == 200:
-        upload_url = response.headers["Location"]
-        print("Upload URL: " + upload_url)
-    else:
-        error_message = response.json()["error"]
-        print("Error: " + error_message)
-        exit()
-
-    # Send the video file in chunks
-    chunk_size = 1024 * 1024
-    start = 0
-    end = min(chunk_size, os.path.getsize(video_path) - 1)
-    while start <= os.path.getsize(video_path) - 1:
-        headers = {
-            "Content-Range": f"bytes {start}-{end}/{os.path.getsize(video_path)}"
+            'Authorization': 'Bearer ' + peertube_auth()
         }
-
-        with open(video_path, "rb") as f:
-            f.seek(start)
-            chunk = f.read(chunk_size)
-
-        response = requests.put(
-            url=upload_url,
-            headers=headers,
-            data=chunk
-        )
-
-        if response.status_code == 200:
-            print(response.json())
-            start = end + 1
-            end = min(start + chunk_size - 1, os.path.getsize(video_path) - 1)
-        elif response.status_code == 308:
-            range_header = response.headers["Range"]
-            print("Range header: " + range_header)
-            start = int(range_header.split("-")[1]) + 1
-            end = min(start + chunk_size - 1, os.path.getsize(video_path) - 1)
-        else:
-            error_message = response.json()["error"]
-            print("Error: " + error_message)
-            exit()
-
+    try:
+        # Upload a video
+            res = requests.post(url=f'{peertube_api_url}/videos/upload',headers=headers,files=files,data=data)
+    except ApiException as e:
+        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+    return res.json()['video']['uuid']
 
 
 # Create playlist in peertube
 
-def create_playlist(display_name,channel_id):
-    # Enter a context with an instance of the API client
-    with peertube.ApiClient(configuration) as api_client:
-        # Create an instance of the API class
-        api_instance = peertube.VideoPlaylistsApi(api_client)
-    privacy = 1 # VideoPlaylistPrivacySet |  (optional)
-    #description = 'description_example' # str | Video playlist description (optional)
-    video_channel_id = channel_id # int | Video channel in which the playlist will be published (optional)
-    try:
-        # Create a video playlist
-        api_response = api_instance.video_playlists_post(display_name, privacy=privacy, video_channel_id=video_channel_id)
-        api_out = str(api_response).split("uuid")[1].replace(":","").replace('\'',"").replace("}}","").replace(" ", "")
-    except ApiException as e:
-        print("Exception when calling VideoPlaylistsApi->video_playlists_post: %s\n" % e)
-    return api_out
-
-
-# Add video to playlist
-
-def add_video_playlist(v_id,p_id):
-    configuration = peertube.Configuration(host = f'{peertube_api_url}/video-playlists/{p_id}/videos')
-    #configuration.access_token = get_token()
-    # Enter a context with an instance of the API client
-    with peertube.ApiClient(configuration) as api_client:
-        # Create an instance of the API class
-        api_instance = peertube.VideoPlaylistsApi(api_client)
-    try:
-        # Add a video in a playlist
-        api_instance.video_playlists_id_videos_post(v_id)
-    except ApiException as e:
-        print("Exception when calling VideoPlaylistsApi->video_playlists_id_videos_post: %s\n" % e)
-
-
-# Create channels
-
-def create_channel(sub):
-    with peertube.ApiClient(configuration) as api_client:
-        api_instance = peertube.VideoChannelsApi(api_client)
-        video_channel_create = peertube.VideoChannelCreate(name=f'{sub}',display_name=f'r/{sub}') # VideoChannelCreate |  (optional)
+def create_playlist(display_name,sub):
+    videoChannelId = list_channels()[sub]
+    privacy = 1
+    headers = {
+            'Authorization': 'Bearer ' + peertube_auth()
+        }
+    data = {
+        'displayName': (None, display_name),
+        'videoChannelId': (None, videoChannelId),
+        'privacy': (None, str(privacy))
+    }
 
     try:
-        # Create a video channel
-        api_instance.video_channels_post(video_channel_create=video_channel_create)
+        # Create playlilst
+            res = requests.post(url=f'{peertube_api_url}/video-playlists',headers=headers,files=data)
     except ApiException as e:
-        print("Exception when calling VideoChannelsApi->video_channels_post: %s\n" % e)
+        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+    return res.json()['videoPlaylist']['id']
 
 
+# # Add video to playlist
+
+# def add_video_playlist(v_id,p_id):
+    
 
 ###############################
 ##### MAIN FUNCTIONS ##########
