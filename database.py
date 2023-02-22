@@ -238,11 +238,11 @@ def get_dl_list_period(sub,period):
     return dl_list
 
 
-def update_item_db(sub,v_hash,id,blob_url):
+def update_item_db(sub,v_hash,id,vid_uuid):
     connection = create_db_connection()
     cursor = connection.cursor()
     try:
-        sql = "UPDATE subreddit_{} SET videohash = '{}', path = '{}' WHERE id = '{}'".format(sub,v_hash,blob_url,id)
+        sql = "UPDATE subreddit_{} SET videohash = '{}', path = '{}' WHERE id = '{}'".format(sub,v_hash,vid_uuid,id)
         #print(sql)
 
         cursor.execute(sql)
@@ -361,41 +361,10 @@ def list_channels():
 
 # Upload video to peertube instance
 
-def start_upload_session():
-    video_path = "/home/azureuser/reddit_scraper/working/6t2vv3htlrga1-DASH_720.mp4"
-    title = 'Test vid'
-    sub = "aww"
-    filesize = str(os.path.getsize(video_path))
-    channel_list = list_channels()
-
-    headers = {
-        'Authorization': 'Bearer ' + peertube_auth(),
-        'X-Upload-Content-Length': filesize,
-        'X-Upload-Content-Type': "video/mp4"
-    }
-
-    jdata = {
-        'channelId': channel_list[sub],
-        'name': title,
-        'filename': video_path
-    }
-
-    try:
-        # Upload a video
-        res = requests.post(
-            url=f'{peertube_api_url}/videos/upload-resumable',
-            headers=headers,
-            json=jdata
-        )
-        print(res.text)
-    except requests.exceptions.RequestException as e:
-        print("Exception when uploading video: %s\n" % e)
-    return
-
-
 def upload_video(sub,title,video_path):
+    videoChannelId = list_channels()[sub]
     filenamevar = os.path.basename(video_path)
-    data = {'channelId': list_channels()[sub], 'name': title, 'privacy': 1}
+    data = {'channelId': videoChannelId, 'name': title, 'privacy': 1}
     files = {
         'videofile': (filenamevar,open(video_path, 'rb'),'video/mp4',{'Expires': '0'})}
     headers = {
@@ -404,9 +373,11 @@ def upload_video(sub,title,video_path):
     try:
         # Upload a video
             res = requests.post(url=f'{peertube_api_url}/videos/upload',headers=headers,files=files,data=data)
-    except ApiException as e:
+            print(res.text)
+            v_id = res.json()['video']['uuid']
+    except Exception as e:
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
-    return res.json()['video']['uuid']
+    return v_id
 
 
 # Create playlist in peertube
@@ -426,15 +397,28 @@ def create_playlist(display_name,sub):
     try:
         # Create playlilst
             res = requests.post(url=f'{peertube_api_url}/video-playlists',headers=headers,files=data)
-    except ApiException as e:
+            p_id = res.json()['videoPlaylist']['id']
+    except Exception as e:
         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
-    return res.json()['videoPlaylist']['id']
+    return p_id
 
 
 # # Add video to playlist
 
-# def add_video_playlist(v_id,p_id):
-    
+def add_video_playlist(v_id,p_id):
+    headers = {
+            'Authorization': 'Bearer ' + peertube_auth()
+        }
+    data = {
+        'videoId': v_id
+    }
+    try:
+        # Create playlilst
+            res = requests.post(url=f'{peertube_api_url}/video-playlists/{p_id}/videos',headers=headers,json=data)
+    except Exception as e:
+        print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
+    return print(f'Video {v_id} added successfully to playlist {p_id}.')
+
 
 ###############################
 ##### MAIN FUNCTIONS ##########
@@ -447,15 +431,17 @@ def main_dl_period(sub,period):
     #period = 'day'
     global working_dir
     dlList = get_dl_list_period(f'{sub}',f'{period}')
-    isExist = os.path.exists(path)
-    if not isExist:
-        os.mkdir(path)
-    
+    # isExist = os.path.exists(path)
+    # if not isExist:
+    #     os.mkdir(path)
+
+    # Create playlist for session
+    playlist_id = create_playlist(f'{sub} top of the {period}',sub)
+
     # Download each video post
     for post in dlList:
         print (post[1])
         sani_title = cleanString(post[0])
-        working_file = glob.glob(f"{working_dir}/*.mp4")
         id = post[2]
         url = post[1]
 
@@ -466,30 +452,27 @@ def main_dl_period(sub,period):
             return
         time.sleep(0.500)
 
-        # Generate video hash
+        working_file = glob.glob(f"{working_dir}/*.mp4")[0]
 
-        v_hash = VideoHash(path=f"{working_file}")
+        # Generate video hash
+        v_hash = VideoHash(path=working_file)
         url = str(post[1])
         hash_value = v_hash.hash
         if debug:
             print(f'Video hash: {hash_value}')
 
         # Upload video to peertube
-        path = upload_video(path,sani_title,sub)
+        vid_uuid = upload_video(sub,sani_title,working_file)
 
         # Add video hash and path to database
-        update_item_db(sub,hash_value,id,path)
+        update_item_db(sub,hash_value,id,vid_uuid)
 
+        # Add video to same playlist
+        add_video_playlist(vid_uuid,playlist_id)
 
+        # Delete uploaded videos
+        os.remove(working_file)
 
-        # # Rename video file
-        # try:
-        #     Path(old_filename[0]).rename(new_filename)
-        # except:
-        #     return
-
-        if debug:
-            print(path)
     return print("Completed downloading videos")
 
 
