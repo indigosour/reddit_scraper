@@ -420,9 +420,9 @@ def add_video_playlist(v_id,p_id):
     return print(f'Video {v_id} added successfully to playlist {p_id}.')
 
 
-###############################
-##### MAIN FUNCTIONS ##########
-###############################
+###########################
+##### MAIN FUNCTIONS ######
+###########################
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
@@ -474,6 +474,81 @@ def main_dl_period(sub,period):
         os.remove(working_file)
 
     return print("Completed downloading videos")
+
+
+# # Main_dl_period with error handling
+
+# def main_dl_period(sub, period):
+#     try:
+#         global working_dir
+#         dlList = get_dl_list_period(f'{sub}', f'{period}')
+#         # isExist = os.path.exists(working_dir)
+#         # if not isExist:
+#         #     os.mkdir(working_dir)
+
+#         # Create playlist for session
+#         playlist_id = create_playlist(f'{sub} top of the {period}', sub)
+
+#         # Download each video post
+#         for post in dlList:
+#             print(post[1])
+#             sani_title = cleanString(post[0])
+#             id = post[2]
+#             url = post[1]
+
+#             # Download video and store in working directory
+#             try:
+#                 download_video(url, working_dir)
+#             except Exception as e:
+#                 print(f"Error downloading video: {e}")
+#                 continue
+#             time.sleep(0.500)
+
+#             working_file = glob.glob(f"{working_dir}/*.mp4")[0]
+
+#             # Generate video hash
+#             try:
+#                 v_hash = VideoHash(path=working_file)
+#             except Exception as e:
+#                 print(f"Error generating video hash: {e}")
+#                 continue
+#             url = str(post[1])
+#             hash_value = v_hash.hash
+#             if debug:
+#                 print(f'Video hash: {hash_value}')
+
+#             # Upload video to peertube
+#             try:
+#                 vid_uuid = upload_video(sub, sani_title, working_file)
+#             except Exception as e:
+#                 print(f"Error uploading video: {e}")
+#                 continue
+
+#             # Add video hash and path to database
+#             try:
+#                 update_item_db(sub, hash_value, id, vid_uuid)
+#             except Exception as e:
+#                 print(f"Error updating database: {e}")
+#                 continue
+
+#             # Add video to same playlist
+#             try:
+#                 add_video_playlist(vid_uuid, playlist_id)
+#             except Exception as e:
+#                 print(f"Error adding video to playlist: {e}")
+#                 continue
+
+#             # Delete uploaded videos
+#             try:
+#                 os.remove(working_file)
+#             except Exception as e:
+#                 print(f"Error deleting video file: {e}")
+#                 continue
+
+#         print("Completed downloading videos")
+#     except Exception as e:
+#         print(f"Error occurred: {e}")
+
 
 
 def update_DB():
