@@ -588,7 +588,40 @@ def grab_dat(period):
         print(f'Completed downloading {sub}')
 
 
+def main():
+    while True:
+        print("Welcome to Reddit Scraper! \nPlease select an option below:")
+        print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
+        print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
+        print("3. Update the databases with the latest posts.")
+        print("4. Exit the program")
 
+        choice = input("Enter your choice: ")
+
+        if choice == "1":
+            choice_sub = input("Which subreddit would you like to download?")
+            print(f"You selected option 1. \nNow gathering and downloading posts from {choice_sub}...")
+            
+
+
+        elif choice == "2":
+
+            print("You selected option 2. \nNow gathering and downloading posts...")
+
+        elif choice == "3":
+
+            print("You selected option 3. \nBeginning db update now...")
+
+        elif choice == "4":
+
+            print("Exiting...")
+            break
+
+        else:
+            print("Invalid choice. Please try again.")
+
+if __name__ == "__main__":
+    main()
 
 #### OLD ####
 
