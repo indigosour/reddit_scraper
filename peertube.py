@@ -1,8 +1,35 @@
 import logging,requests,json,os
+from azure.keyvault.secrets import SecretClient
+from azure.identity import ClientSecretCredential
+from dotenv import load_dotenv
+
+logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
+
+load_dotenv()
+
 
 # Variables
 peertube_api_url = "***REMOVED***"
 peertube_token = None
+
+def get_az_secret(key_name):
+    try:
+        az_tenant_id = os.getenv('AZURE_TENANT_ID')
+        az_client_id = os.getenv('AZURE_CLIENT_ID')
+        az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
+
+        az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
+        vault_url = "***REMOVED***"
+        az_client = SecretClient(vault_url=vault_url, credential=az_credential)
+        sql_pass = az_client.get_secret(key_name)
+
+        logging.info(f"get_az_secret: Retrieved secret '{key_name}' from Azure Key Vault.")
+        return sql_pass.value
+
+    except Exception as e:
+        logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
+        raise
+
 
 ######################
 ##### Peertube #######
@@ -11,7 +38,7 @@ peertube_token = None
 def peertube_auth():
     global peertube_token
     peertube_api_user = "***REMOVED***"
-    peertube_api_pass = "***REMOVED***"
+    peertube_api_pass = str(get_az_secret("PEERTUBE-API-PASS"))
     logging.info("peertube_auth: Logging into peertube")
 
     try:

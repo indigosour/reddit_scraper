@@ -4,14 +4,11 @@ from redvid import Downloader
 from datetime import datetime
 from database import *
 from peertube import *
+from dotenv import load_dotenv
 
+load_dotenv()
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
-
-
-reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
-                               client_secret="***REMOVED***",      # your client secret
-                               user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
 # Variables and config
 
@@ -54,10 +51,32 @@ def cleanString(sourcestring):
     text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
     return text_without_emoji
 
+def get_az_secret(key_name):
+    try:
+        az_tenant_id = os.getenv('AZURE_TENANT_ID')
+        az_client_id = os.getenv('AZURE_CLIENT_ID')
+        az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
+
+        az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
+        vault_url = "***REMOVED***"
+        az_client = SecretClient(vault_url=vault_url, credential=az_credential)
+        sql_pass = az_client.get_secret(key_name)
+
+        logging.info(f"get_az_secret: Retrieved secret '{key_name}' from Azure Key Vault.")
+        return sql_pass.value
+
+    except Exception as e:
+        logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
+        raise
 
 ######################
 ####### REDDIT #######
 ######################
+
+reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
+                               client_secret=get_az_secret("PRAW-API-SECRET"),      # your client secret
+                               user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
+
 
 # get_reddit_list: Get reddit posts and store in a list
 
@@ -101,8 +120,6 @@ def get_reddit_list(sub,period):
     else:
         logging.error(f'get_reddit_list: Failure to retrieve reddit list for {sub} for period {period}')
     return postlist
-
-
 
 
 # Download video posts
