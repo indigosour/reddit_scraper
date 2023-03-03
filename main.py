@@ -6,7 +6,7 @@ from database import *
 from peertube import *
 
 
-logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.debug)
+logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
 
 
 reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
@@ -324,55 +324,3 @@ def grab_dat(period):
 
 # if __name__ == "__main__":
 #     main()
-
-#### OLD ####
-
-# Download by sub and number = Input subreddit and number of top posts to collect to create working directory and collect mp4 files
-
-# def main_num(sub,num):
-#     #sub = 'funny'
-#     #period = 'day'
-#     global working_dir
-#     today = datetime.today().strftime('%m-%d-%Y')
-#     playlist = get_video_posts_num(f'{sub}',num)
-#     # uuid_value = str(uuid.uuid4())
-#     # parent_dir = working_dir
-#     path = f'{storage_dir}/{sub}_Top_{num}_{today}/'
-#     os.mkdir(path)
-
-#     for post in playlist:
-#         print (post["permalink"])
-#         sani_title = cleanString(post["title"])
-#         download_video(post["permalink"],working_dir)
-#         time.sleep(0.500)
-#         old_filename = glob.glob(f"{working_dir}/*.mp4")
-#         new_filename = f'{storage_dir}/{sub}_Top_{num}_{today}/{sani_title}.mp4'
-#         try:
-#             Path(old_filename[0]).rename(new_filename)
-#         except:
-#             continue
-#         print(f'Moving {old_filename[0]} to {new_filename}')
-
-# def get_video_posts_num(sub,num):
-#     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-#     video_urllist = []
-#     #sub = 'funny'
-#     #num = 500
-#     for post in get_reddit_list_number(f'{sub}',num):
-#         if post["permalink"]:
-#             if post["permalink"][len(post["permalink"])-1] == '/':
-#                 json_url = post["permalink"][:len(post["permalink"])-1]+'.json'
-#             else:
-#                 json_url = post["permalink"] + '.json'
-#             json_response = requests.get(json_url, 
-#                             headers= headers)
-#             if json_response.json()[0]['data']['children'][0]['data']['is_video'] == True and json_response.json()[0]['data']['children'][0]['data']['over_18'] == False:
-#                 json_urllist = {
-#                     "id": json_response.json()[0]['data']['children'][0]['data']['id'],
-#                     "permalink": post["permalink"],
-#                     "title": json_response.json()[0]['data']['children'][0]['data']['title']
-#                     }
-#                 video_urllist.append(json_urllist)
-#             elif json_response.status_code != 200:
-#                 print("Error Detected, check the URL!!!")
-#     return video_urllist  
