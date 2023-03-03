@@ -1,16 +1,12 @@
 import mysql.connector as db
-import logging,datetime,emoji,re
-from datetime import timedelta
+import logging
+from datetime import datetime, timedelta
+from main import sublist, cleanString
+
 
 ######################
 ######## SQL #########
 ######################
-
-def cleanString(sourcestring):
-    text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
-    pattern = r"[%:/,.\"\\[\]<>*\?]"
-    text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
-    return text_without_emoji
 
 def create_db_connection():
     connection = None
@@ -101,7 +97,7 @@ def store_reddit_posts(sub, postlist):
     logging.info(f"store_reddit_posts: Storing reddit posts in subreddit_{sub}") 
     for post in postlist:
         id = post['id']
-        title = cleanString(post['title'])
+        title = cleanString(post['title'])[:255]
         author = post['author']
         score = post['score']
         upvote_ratio = post['upvote_ratio']
@@ -148,42 +144,44 @@ def get_dl_list_period(sub,period):
 
     # Determine the start and end dates based on the period given
     if period == "day":
-        start_date = str(datetime.today() - timedelta(days=1))
-        end_date = str(datetime.today())
+        start_date = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+        end_date = datetime.today().strftime('%Y-%m-%d')
     elif period == "week":
-        start_date = str(datetime.today() - timedelta(days=7))
-        end_date = str(datetime.today())
+        start_date = (datetime.today() - timedelta(days=7)).strftime('%Y-%m-%d')
+        end_date = datetime.today().strftime('%Y-%m-%d')
     elif period == "month":
-        start_date = str(datetime.today() - timedelta(days=30))
-        end_date = str(datetime.today())
+        start_date = (datetime.today() - timedelta(days=30)).strftime('%Y-%m-%d')
+        end_date = datetime.today().strftime('%Y-%m-%d')
     elif period == "year":
-        start_date = str(datetime.today() - timedelta(days=365))
-        end_date = str(datetime.today())
+        start_date = (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d')
+        end_date = datetime.today().strftime('%Y-%m-%d')
     else:
         print("Invalid period")
 
     logging.info(f"get_dl_list_period: Period calculated \nStart Date: {start_date} and End Date: {end_date}")
 
-    try:
-        select_Query = """
-        SELECT title, permalink, id FROM subreddit_%s
-        WHERE created_utc BETWEEN %s AND %s AND score > 500
-        """
-        cursor.execute(select_Query, (sub, start_date, end_date))
-        dl_list = cursor.fetchall()
+    if sub in sublist:
+        try:
+            select_Query = f"""
+            SELECT title, permalink, id FROM subreddit_{sub} WHERE created_utc BETWEEN {start_date} AND {end_date} AND score > 500
+            """
+            logging.debug(f'get_dl_list_period: {select_Query}')
+            cursor.execute(select_Query)
+            dl_list = cursor.fetchall()
 
-        # for post in dl_list:
-        #     print(post[0])
-        #     print(post[1])
+            # for post in dl_list:
+            #     print(post[0])
+            #     print(post[1])
+        except db.Error as e:
+            print("Error reading data from table", e)
+            logging.error("get_dl_list_period: Error reading data from table", e)
+        finally:
+            if connection.is_connected():
+                connection.close()
+                cursor.close()
+    else:
+        print("Invalid subreddit selected")
 
-    except db.Error as e:
-        print("Error reading data from table", e)
-        logging.error("get_dl_list_period: Error reading data from table", e)
-
-    finally:
-        if connection.is_connected():
-            connection.close()
-            cursor.close()
     return dl_list
 
 

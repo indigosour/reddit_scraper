@@ -1,11 +1,12 @@
-import os,time,praw,glob,requests,emoji,re,json,logging
+import os,time,praw,glob,emoji,re,logging
 from videohash import VideoHash
 from redvid import Downloader
-from datetime import datetime, timedelta
+from datetime import datetime
 from database import *
 from peertube import *
 
-logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.info)
+
+logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.debug)
 
 
 reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
@@ -15,10 +16,6 @@ reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
 # Variables and config
 
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
-peertube_api_url = "***REMOVED***"
-AZURE_STORAGE_ACCOUNT_NAME = "***REMOVED***"
-AZURE_STORAGE_CONTAINER_NAME = "appstorage"
-peertube_token = None
 
 sublist = [
 
@@ -50,21 +47,12 @@ sublist = [
 
         ]
 
-channel_list = {
-
-                "unexpected":"1",
-                "funny":"2",
-                "whatcouldgowrong":"3"
-                
-            }
-
 
 def cleanString(sourcestring):
     text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
     pattern = r"[%:/,.\"\\[\]<>*\?]"
     text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
     return text_without_emoji
-
 
 
 ######################
@@ -108,11 +96,13 @@ def get_reddit_list(sub,period):
                 logging.error(f'get_reddit_list: Error getting post.',e)
                 print(e)
     
-    if postlist > 10:
+    if len(postlist) > 10:
         logging.info(f'get_reddit_list: Successfully retrieved reddit list for {sub} for period {period}')
     else:
         logging.error(f'get_reddit_list: Failure to retrieve reddit list for {sub} for period {period}')
     return postlist
+
+
 
 
 # Download video posts
@@ -148,72 +138,76 @@ def main_dl_period(sub, period):
 
         # Download each video post
         logging.info(f'main_dl_period: Downloading video posts for for {sub} and period {period}.')
-        for post in dlList:
-            logging.debug(post[1])
-            print(f"Downloading {dlList.__len__} posts.")
-            sani_title = cleanString(post[0])
-            id = post[2]
-            url = str(post[1])
+        
+        if len(dlList) > 0:
+            for post in dlList:
+                logging.debug(post[1])
+                print(f"Downloading {dlList.__len__} posts.")
+                sani_title = cleanString(post[0])
+                id = post[2]
+                url = str(post[1])
 
-            # Download video and store in working directory
-            try:
-                download_video(url, working_dir)
-            except Exception as e:
-                print(f"Error downloading video: {e}")
-                logging.error(f"main_dl_period: Error downloading video: {e}")
-                continue
-            time.sleep(0.500)
+                # Download video and store in working directory
+                try:
+                    download_video(url, working_dir)
+                except Exception as e:
+                    print(f"Error downloading video: {e}")
+                    logging.error(f"main_dl_period: Error downloading video: {e}")
+                    continue
+                time.sleep(0.500)
 
-            working_file = glob.glob(f"{working_dir}/*.mp4")[0]
+                working_file = glob.glob(f"{working_dir}/*.mp4")[0]
 
-            # Generate video hash
-            try:
-                v_hash = VideoHash(path=working_file)
-                hash_value = v_hash.hash
-                logging.debug(f'get video hash: Video hash is {hash_value}')
-            except Exception as e:
-                print(f"Error generating video hash: {e}")
-                logging.error(f"main_dl_period: Error generating video hash: {e}")
-                continue
+                # Generate video hash
+                try:
+                    v_hash = VideoHash(path=working_file)
+                    hash_value = v_hash.hash
+                    logging.debug(f'get video hash: Video hash is {hash_value}')
+                except Exception as e:
+                    print(f"Error generating video hash: {e}")
+                    logging.error(f"main_dl_period: Error generating video hash: {e}")
+                    continue
 
 
-            # Upload video to peertube
-            try:
-                vid_uuid = upload_video(sub, sani_title, working_file)
-            except Exception as e:
-                print(f"Error uploading video: {e}")
-                logging.error(f"main_dl_period: Error uploading video: {e}")
-                continue
+                # Upload video to peertube
+                try:
+                    vid_uuid = upload_video(sub, sani_title, working_file)
+                except Exception as e:
+                    print(f"Error uploading video: {e}")
+                    logging.error(f"main_dl_period: Error uploading video: {e}")
+                    continue
 
-            # Add video hash and path to database
-            try:
-                update_item_db(sub, hash_value, id, vid_uuid)
-            except Exception as e:
-                print(f"Error updating database: {e}")
-                logging.error("main_dl_period: Error updating database: {e}")
-                continue
+                # Add video hash and path to database
+                try:
+                    update_item_db(sub, hash_value, id, vid_uuid)
+                except Exception as e:
+                    print(f"Error updating database: {e}")
+                    logging.error("main_dl_period: Error updating database: {e}")
+                    continue
 
-            # Add video to same playlist
-            try:
-                add_video_playlist(vid_uuid, playlist_id)
-            except Exception as e:
-                print(f"Error adding video to playlist: {e}")
-                logging.error(f'main_dl_period: Error adding video to playlist: {e}')
-                continue
-            
-            # Remove uploaded video
-            try:
-                os.remove(working_file)
-            except Exception as e:
-                print("Error removeing file: {e}")
-                logging.error(f'main_dl_period: Error removing file: {e}')
+                # Add video to same playlist
+                try:
+                    add_video_playlist(vid_uuid, playlist_id)
+                except Exception as e:
+                    print(f"Error adding video to playlist: {e}")
+                    logging.error(f'main_dl_period: Error adding video to playlist: {e}')
+                    continue
+                
+                # Remove uploaded video
+                try:
+                    os.remove(working_file)
+                except Exception as e:
+                    print("Error removeing file: {e}")
+                    logging.error(f'main_dl_period: Error removing file: {e}')
 
-        print("Completed downloading videos")
+            print("Completed downloading videos")
 
-        # Cleanup working directory
-        cleanup_workingdir()
-        logging.info("Cleaned up working directory")
-        logging.info(f'main_dl_period: Completed for {sub} and period {period}.')
+            # Cleanup working directory
+            cleanup_workingdir()
+            logging.info("Cleaned up working directory")
+            logging.info(f'main_dl_period: Completed for {sub} and period {period}.')
+        else:
+            print("No posts returned for download")
 
     except Exception as e:
         print(f"Error occurred: {e}")
@@ -249,53 +243,87 @@ def grab_dat(period):
         print(f'Completed downloading {sub}')
 
 
-def main():
-    global sublist
-    
-    while True:
-        print("Welcome to Reddit Scraper! \nPlease select an option below:")
-        print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
-        print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
-        print("3. Update the databases with the latest posts.")
-        print("4. Exit the program")
+# def main():
+#     global sublist
+#     choicelist = {}
+#     while True:
+#         print("Welcome to Reddit Scraper! \nPlease select an option below:")
+#         print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
+#         print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
+#         print("3. Update the databases with the latest posts.")
+#         print("4. Exit the program")
 
-        choice = input("Enter your choice: ")
+#         choice = input("Enter your choice: ")
 
-        if choice == "1":
-            print(f"You selected option 1.") 
-            choice_sub = input("Which subreddit would you like to download?")
-            for sub in sublist:
-
-            choice_period = input("")
-            print("For which period would you like to download? \nPlease select an option below")
-
-
-            print(f"Now gathering and downloading posts from {choice_sub}...")
+#         if choice == "1":
+#             num = 1
+#             print("You selected option 1.")
+#             print("For which period would you like to download? \nPlease select an option below: ")
+#             print("1. Day")
+#             print('2. Week')
+#             print('3. Month')
+#             print('4. Year')
             
-            try:
-                main_dl_period(choice_sub, choice_period)
-            except KeyboardInterrupt:
-                print("KeyboardInterrupted!")
-                break
+#             choice_period = input("Enter your choice: ")
+            
+#             if choice_period == '1':
+#                 print("You've chosen day.")
 
-        elif choice == "2":
+#             if choice_period == '2':
+#                 print("You've chosen week.")
 
-            print("You selected option 2. \nNow gathering and downloading posts...")
+#             if choice_period == '3':
+#                 print("You've chosen month.")
 
-        elif choice == "3":
+#             if choice_period == '4':
+#                 print("You've chosen year.")
 
-            print("You selected option 3. \nBeginning db update now...")
 
-        elif choice == "4":
+#             choicelist = {
+#                     'num': 'sub' 
+#                 }
+#             print(f"Download the top of {choice_period} for which subreddit? \nSelect an option below: ")
 
-            print("Exiting...")
-            break
+#             for sub in sublist:
+#                 print(f'Choice {num}: {sub}')
+#                 choicelist[f'{num}']=sub
+#                 num = num + 1
+            
+#             choice_sub = input("Enter your choice: ")
+            
+#             chosen_sub = choicelist[choice_sub]
 
-        else:
-            print("Invalid choice. Please try again.")
+#             if chosen_sub is None:
+#                 print("Invalid choice")  
+#             elif True:
+#                 print(f'You\'ve chosen option {choice_sub}: {chosen_sub}')
 
-if __name__ == "__main__":
-    main()
+#             print(f"Now gathering and downloading posts from {chosen_sub}...")
+            
+#             try:
+#                 main_dl_period(choice_sub, choice_period)
+#             except KeyboardInterrupt:
+#                 print("KeyboardInterrupted!")
+#                 break
+
+#         elif choice == "2":
+
+#             print("You selected option 2. \nNow gathering and downloading posts...")
+
+#         elif choice == "3":
+
+#             print("You selected option 3. \nBeginning db update now...")
+
+#         elif choice == "4":
+
+#             print("Exiting...")
+#             break
+
+#         else:
+#             print("Invalid choice. Please try again.")
+
+# if __name__ == "__main__":
+#     main()
 
 #### OLD ####
 

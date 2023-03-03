@@ -2,6 +2,7 @@ import logging,requests,json,os
 
 # Variables
 peertube_api_url = "***REMOVED***"
+peertube_token = None
 
 ######################
 ##### Peertube #######
