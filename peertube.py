@@ -21,10 +21,10 @@ def get_az_secret(key_name):
         az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
         vault_url = "***REMOVED***"
         az_client = SecretClient(vault_url=vault_url, credential=az_credential)
-        sql_pass = az_client.get_secret(key_name)
+        secret_value = az_client.get_secret(key_name)
 
         logging.info(f"get_az_secret: Retrieved secret '{key_name}' from Azure Key Vault.")
-        return sql_pass.value
+        return secret_value.value
 
     except Exception as e:
         logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")

@@ -1,7 +1,28 @@
 import mysql.connector as db
-import logging
+import logging,os
 from datetime import datetime, timedelta
 from main import sublist, cleanString
+from azure.keyvault.secrets import SecretClient
+from azure.identity import ClientSecretCredential
+
+
+def get_az_secret(key_name):
+    try:
+        az_tenant_id = os.getenv('AZURE_TENANT_ID')
+        az_client_id = os.getenv('AZURE_CLIENT_ID')
+        az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
+
+        az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
+        vault_url = "***REMOVED***"
+        az_client = SecretClient(vault_url=vault_url, credential=az_credential)
+        secret_value = az_client.get_secret(key_name)
+
+        logging.info(f"get_az_secret: Retrieved secret '{key_name}' from Azure Key Vault.")
+        return secret_value.value
+
+    except Exception as e:
+        logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
+        raise
 
 
 ######################
@@ -11,7 +32,7 @@ from main import sublist, cleanString
 def create_db_connection():
     connection = None
     user_name = "***REMOVED***"
-    user_password = "***REMOVED***"
+    user_password = get_az_secret('SAPPHIRE-SQLPASS')
     host_name = "***REMOVED***"
     db_name = "reddit_scraper"
     try:
