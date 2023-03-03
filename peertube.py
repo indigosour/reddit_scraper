@@ -2,6 +2,7 @@ import logging,requests,json,os
 
 # Variables
 peertube_api_url = "https://tubelrone.com/api/v1"
+peertube_token = None
 
 ######################
 ##### Peertube #######
