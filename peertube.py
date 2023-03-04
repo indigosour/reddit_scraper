@@ -9,7 +9,7 @@ load_dotenv()
 
 
 # Variables
-peertube_api_url = "***REMOVED***"
+peertube_api_url = ''
 peertube_token = None
 
 def get_az_secret(key_name):
@@ -37,7 +37,7 @@ def get_az_secret(key_name):
 
 def peertube_auth():
     global peertube_token
-    peertube_api_user = "***REMOVED***"
+    peertube_api_user = get_az_secret("TUBE-CRED")['username']
     peertube_api_pass = str(get_az_secret("PEERTUBE-API-PASS"))
     logging.info("peertube_auth: Logging into peertube")
 

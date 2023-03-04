@@ -69,9 +69,11 @@ def get_az_secret(key_name):
         logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
         raise
 
+
 ######################
 ####### REDDIT #######
 ######################
+
 reddit_credentials = []
 
 reddit_cred = get_az_secret("REDDIT-CRED")

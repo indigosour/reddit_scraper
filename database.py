@@ -31,9 +31,9 @@ def get_az_secret(key_name):
 
 def create_db_connection():
     connection = None
-    user_name = "***REMOVED***"
+    user_name = ""
     user_password = get_az_secret('SAPPHIRE-SQLPASS')
-    host_name = "***REMOVED***"
+    host_name = ""
     db_name = "reddit_scraper"
     try:
         connection = db.connect(
