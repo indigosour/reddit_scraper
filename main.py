@@ -4,9 +4,8 @@ from redvid import Downloader
 from datetime import datetime
 from database import *
 from peertube import *
-from dotenv import load_dotenv
-
-load_dotenv()
+from azure.keyvault.secrets import SecretClient
+from azure.identity import ClientSecretCredential
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
 
@@ -59,7 +58,7 @@ def get_az_secret(key_name):
         az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
 
         az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
-        vault_url = "***REMOVED***"
+        vault_url = os.getenv('AZURE_VAULT_URL')
         az_client = SecretClient(vault_url=vault_url, credential=az_credential)
         secret_value = az_client.get_secret(key_name)
 
@@ -73,9 +72,12 @@ def get_az_secret(key_name):
 ######################
 ####### REDDIT #######
 ######################
+reddit_credentials = []
 
-reddit = praw.Reddit(client_id="***REMOVED***",         # your client id
-                               client_secret=get_az_secret("PRAW-API-SECRET"),      # your client secret
+reddit_cred = get_az_secret("REDDIT-CRED")
+
+reddit = praw.Reddit(client_id=reddit_cred['username'],         # your client id
+                               client_secret=reddit_cred['password'],      # your client secret
                                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
 
 
