@@ -1,9 +1,7 @@
 import mysql.connector as db
 import logging
 from datetime import datetime, timedelta
-from loadsublist import load_sublist
-from azvault import get_az_secret
-from cleanString import cleanString
+from common import *
 
 
 ######################

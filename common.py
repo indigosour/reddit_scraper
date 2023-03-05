@@ -1,8 +1,29 @@
+import os,json,emoji,re,logging
 from azure.keyvault.secrets import SecretClient
 from azure.identity import ClientSecretCredential
-import json, logging,os
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
+
+## Common functions
+
+def load_sublist():
+    global sublist_value
+    if os.path.exists("sublist.json"):
+        try:
+            with open('sublist.json', 'r') as f:
+                data = json.load(f)
+                return data     
+        except Exception as e:
+            print("Error loading sublist.json",e)
+    else:
+        print("sublist.json does not exist")
+
+
+def cleanString(sourcestring):
+    text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
+    pattern = r"[%:/,.\"\\[\]<>*\?]"
+    text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
+    return text_without_emoji
 
 
 def get_az_secret(key_name):

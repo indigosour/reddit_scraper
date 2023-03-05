@@ -4,9 +4,7 @@ from redvid import Downloader
 from datetime import datetime
 from database import *
 from peertube import *
-from azvault import *
-from cleanString import *
-from loadsublist import *
+from common import *
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
 

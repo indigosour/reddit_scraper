@@ -1,5 +1,5 @@
 import logging,requests,json,os
-from azvault import get_az_secret
+from common import get_az_secret
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
 
