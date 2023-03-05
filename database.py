@@ -1,9 +1,7 @@
 import mysql.connector as db
-import logging,os
+import logging
 from datetime import datetime, timedelta
 from main import cleanString, load_sublist
-from azure.keyvault.secrets import SecretClient
-from azure.identity import ClientSecretCredential
 from azvault import get_az_secret
 
 ######################

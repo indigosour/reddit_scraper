@@ -1,10 +1,8 @@
 from sqlalchemy import create_engine, Column, Integer, String, LargeBinary, Boolean, DateTime, text, DECIMAL
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy.orm
-import logging, datetime, re, emoji, os, logging
+import logging, datetime, logging
 from datetime import timedelta
-from azure.keyvault.secrets import SecretClient
-from azure.identity import ClientSecretCredential
 from azvault import get_az_secret
 from main import cleanString, load_sublist
 
