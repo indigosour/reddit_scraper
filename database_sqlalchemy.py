@@ -4,7 +4,8 @@ import sqlalchemy.orm
 import logging, datetime, logging
 from datetime import timedelta
 from azvault import get_az_secret
-from main import cleanString, load_sublist
+from loadsublist import load_sublist
+from cleanString import cleanString
 
 database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/reddit_scraper_dev"
 

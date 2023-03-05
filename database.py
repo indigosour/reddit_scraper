@@ -1,8 +1,10 @@
 import mysql.connector as db
 import logging
 from datetime import datetime, timedelta
-from main import cleanString, load_sublist
+from loadsublist import load_sublist
 from azvault import get_az_secret
+from cleanString import cleanString
+
 
 ######################
 ######## SQL #########
@@ -10,10 +12,10 @@ from azvault import get_az_secret
 
 def create_db_connection():
     connection = None
-
-    user_name = get_az_secret('DB-CRED')['username']
-    user_password = get_az_secret('DB-CRED')['password']
-    host_name = get_az_secret('DB-CRED')['url']
+    db_cred = get_az_secret("DB-CRED")
+    user_name = db_cred['username']
+    user_password = db_cred['password']
+    host_name = db_cred['url']
     db_name = "reddit_scraper"
     try:
         connection = db.connect(

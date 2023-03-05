@@ -1,10 +1,12 @@
-import os,time,praw,glob,emoji,re,logging
+import os,time,praw,glob,logging
 from videohash import VideoHash
 from redvid import Downloader
 from datetime import datetime
-from database import store_reddit_posts, update_item_db, get_dl_list_period
+from database import *
 from peertube import *
-from azvault import get_az_secret
+from azvault import *
+from cleanString import *
+from loadsublist import *
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
 
@@ -12,37 +14,19 @@ logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(
 
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
-def load_sublist():
-    global sublist_value
-    if os.path.exists("sublist.json"):
-        try:
-            with open('sublist.json', 'r') as f:
-                data = json.load(f)
-                return data     
-        except Exception as e:
-            print("Error loading sublist.json")
-    else:
-        print("sublist.json does not exist")
-
-def cleanString(sourcestring):
-    text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
-    pattern = r"[%:/,.\"\\[\]<>*\?]"
-    text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
-    return text_without_emoji
-
 
 ######################
 ####### REDDIT #######
 ######################
 
-reddit_credentials = []
-
-reddit_cred = get_az_secret("REDDIT-CRED")
-
-reddit = praw.Reddit(client_id=reddit_cred['username'],         # your client id
-                               client_secret=reddit_cred['password'],      # your client secret
-                               user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")        # your user agent
-
+def reddit_auth():
+    try: 
+        reddit = praw.Reddit(client_id=get_az_secret("REDDIT-CRED")['username'],
+                                    client_secret=get_az_secret("REDDIT-CRED")['password'],
+                                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")
+        return reddit
+    except Exception as e:
+        print("Exception caught",e)
 
 # get_reddit_list: Get reddit posts and store in a list
 
@@ -53,6 +37,7 @@ reddit = praw.Reddit(client_id=reddit_cred['username'],         # your client id
 # Return: Number of posts requested including id, title, author, score, etc.
 
 def get_reddit_list(sub,period):
+    reddit = reddit_auth()
     num = 1000
     posts = reddit.subreddit(f'{sub}').top(time_filter=f'{period}',limit=num)
     logging.info(f'get_reddit_list: Getting list for {sub} for {period}')
