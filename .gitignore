@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 working/
+sublist.json
 
 # C extensions
 *.so

@@ -1,29 +1,10 @@
 import mysql.connector as db
 import logging,os
 from datetime import datetime, timedelta
-from main import sublist, cleanString
+from main import cleanString, load_sublist
 from azure.keyvault.secrets import SecretClient
 from azure.identity import ClientSecretCredential
-
-
-def get_az_secret(key_name):
-    try:
-        az_tenant_id = os.getenv('AZURE_TENANT_ID')
-        az_client_id = os.getenv('AZURE_CLIENT_ID')
-        az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
-
-        az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
-        vault_url = os.getenv('AZURE_VAULT_URL')
-        az_client = SecretClient(vault_url=vault_url, credential=az_credential)
-        secret_value = az_client.get_secret(key_name)
-
-        logging.info(f"get_az_secret: Retrieved secret '{key_name}' from Azure Key Vault.")
-        return secret_value.value
-
-    except Exception as e:
-        logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
-        raise
-
+from azvault import get_az_secret
 
 ######################
 ######## SQL #########
@@ -31,9 +12,10 @@ def get_az_secret(key_name):
 
 def create_db_connection():
     connection = None
-    user_name = ""
-    user_password = get_az_secret('SAPPHIRE-SQLPASS')
-    host_name = ""
+
+    user_name = get_az_secret('DB-CRED')['username']
+    user_password = get_az_secret('DB-CRED')['password']
+    host_name = get_az_secret('DB-CRED')['url']
     db_name = "reddit_scraper"
     try:
         connection = db.connect(
@@ -161,6 +143,7 @@ def store_reddit_posts(sub, postlist):
 def get_dl_list_period(sub,period):
     connection = create_db_connection()
     cursor = connection.cursor()
+    sublist = load_sublist()
     logging.info(f"get_dl_list_period: Getting download list for subreddit {sub} for the period {period} ")
 
     # Determine the start and end dates based on the period given
