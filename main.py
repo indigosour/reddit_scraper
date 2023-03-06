@@ -5,9 +5,7 @@ from datetime import datetime
 from database import *
 from peertube import *
 from common import *
-from dotenv import load_dotenv
 
-load_dotenv()
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
 

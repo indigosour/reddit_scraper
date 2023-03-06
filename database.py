@@ -155,8 +155,6 @@ def store_reddit_posts(sub, postlist):
     return print(f"Successfully added {entrycount} entries to database")
 
 
-
-
 def get_dl_list_period(sub, period):
     engine = create_engine(database_url)
     sublist = load_sublist()

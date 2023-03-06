@@ -21,7 +21,7 @@ def load_sublist():
 
 def cleanString(sourcestring):
     text_ascii = emoji.demojize(sourcestring) if sourcestring else ""
-    pattern = r"[%:/,.\"\\[\]<>*\?]"
+    pattern = r"[%:/,.\"\\[\]<>*\?\x80-\xFF\xE2\x81\xB0]"
     text_without_emoji = re.sub(pattern, '', text_ascii) if text_ascii else ""
     return text_without_emoji
 
