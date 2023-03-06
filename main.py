@@ -5,6 +5,9 @@ from datetime import datetime
 from database import *
 from peertube import *
 from common import *
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
 
@@ -210,84 +213,114 @@ def grab_dat(period):
         print(f'Completed downloading {sub}')
 
 
-# def main():
-#     global sublist
-#     choicelist = {}
-#     while True:
-#         print("Welcome to Reddit Scraper! \nPlease select an option below:")
-#         print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
-#         print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
-#         print("3. Update the databases with the latest posts.")
-#         print("4. Exit the program")
+def main():
+    sublist = load_sublist()
+    choicelist = {}
+    while True:
+        print("Welcome to Reddit Scraper! \nPlease select an option below:")
+        print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
+        print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
+        print("3. Update the databases with the latest posts.")
+        print("4. Exit the program")
 
-#         choice = input("Enter your choice: ")
+        choice = input("Enter your choice: ")
 
-#         if choice == "1":
-#             num = 1
-#             print("You selected option 1.")
-#             print("For which period would you like to download? \nPlease select an option below: ")
-#             print("1. Day")
-#             print('2. Week')
-#             print('3. Month')
-#             print('4. Year')
+        if choice == "1":
+            num = 1
+            print("You selected option 1.")
+            print("For which period would you like to download? \nPlease select an option below: ")
+            print("1. Top of the last Day")
+            print('2. Top of the last Week')
+            print('3. Top of the last Month')
+            print('4. Top of the last Year')
             
-#             choice_period = input("Enter your choice: ")
+            choice_period = input("Enter your choice: ")
             
-#             if choice_period == '1':
-#                 print("You've chosen day.")
+            if choice_period == '1':
+                print("You've chosen day.")
+                chosen_period = 'day'
+            if choice_period == '2':
+                print("You've chosen week.")
+                chosen_period = 'week'
+            if choice_period == '3':
+                print("You've chosen month.")
+                chosen_period = 'month'
+            if choice_period == '4':
+                print("You've chosen year.")
+                chosen_period = 'year'
 
-#             if choice_period == '2':
-#                 print("You've chosen week.")
+            choicelist = {
+                    'num': 'sub' 
+                }
+            print(f"Download the top of {chosen_period} for which subreddit? \nSelect an option below: ")
 
-#             if choice_period == '3':
-#                 print("You've chosen month.")
-
-#             if choice_period == '4':
-#                 print("You've chosen year.")
-
-
-#             choicelist = {
-#                     'num': 'sub' 
-#                 }
-#             print(f"Download the top of {choice_period} for which subreddit? \nSelect an option below: ")
-
-#             for sub in sublist:
-#                 print(f'Choice {num}: {sub}')
-#                 choicelist[f'{num}']=sub
-#                 num = num + 1
+            for sub in sublist:
+                print(f'Choice {num}: {sub}')
+                choicelist[f'{num}']=sub
+                num = num + 1
             
-#             choice_sub = input("Enter your choice: ")
+            choice_sub = input("Enter your choice: ")
             
-#             chosen_sub = choicelist[choice_sub]
+            chosen_sub = choicelist[choice_sub]
 
-#             if chosen_sub is None:
-#                 print("Invalid choice")  
-#             elif True:
-#                 print(f'You\'ve chosen option {choice_sub}: {chosen_sub}')
-
-#             print(f"Now gathering and downloading posts from {chosen_sub}...")
+            if chosen_sub is None:
+                print("Invalid choice")  
+            elif True:
+                print(f'You\'ve chosen option {choice_sub}: {chosen_sub}')
+            print(f"Now gathering and downloading posts from {chosen_sub}...")
             
-#             try:
-#                 main_dl_period(choice_sub, choice_period)
-#             except KeyboardInterrupt:
-#                 print("KeyboardInterrupted!")
-#                 break
+            try:
+                main_dl_period(chosen_sub, chosen_period)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupted!")
+                break
 
-#         elif choice == "2":
+        elif choice == "2":
+            print("You selected option 2. Download all subreddits for a specific period of time.")
+            print("For which period would you like to download? \nPlease select an option below: ")
+            print("1. Top of the last Day")
+            print('2. Top of the last Week')
+            print('3. Top of the last Month')
+            print('4. Top of the last Year')
+            
+            choice_period = input("Enter your choice: ")
+            
+            if choice_period == '1':
+                print("You've chosen day.")
+                chosen_period = 'day'
+            if choice_period == '2':
+                print("You've chosen week.")
+                chosen_period = 'week'
+            if choice_period == '3':
+                print("You've chosen month.")
+                chosen_period = 'month'
+            if choice_period == '4':
+                print("You've chosen year.")
+                chosen_period = 'year'
+    
+            try:
+                grab_dat(chosen_period)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupted!")
+                break
 
-#             print("You selected option 2. \nNow gathering and downloading posts...")
+        elif choice == "3":
+            print("You selected option 3. \nBeginning db update now...")
+            try:
+                update_DB()
+            except Exception as e:
+                print("Error updating the DB: %s" % e)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt!")
+                break
 
-#         elif choice == "3":
+        elif choice == "4":
 
-#             print("You selected option 3. \nBeginning db update now...")
+            print("Exiting...")
+            break
 
-#         elif choice == "4":
+        else:
+            print("Invalid choice. Please try again.")
 
-#             print("Exiting...")
-#             break
-
-#         else:
-#             print("Invalid choice. Please try again.")
-
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
