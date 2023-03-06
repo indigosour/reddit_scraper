@@ -5,7 +5,7 @@ import logging,datetime
 from datetime import timedelta, datetime
 from common import *
 
-db_name = 'reddit_scraper_dev'
+db_name = 'reddit_scraper'
 database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/{db_name}"
 Base = sqlalchemy.orm.declarative_base()
 
