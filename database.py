@@ -1,104 +1,129 @@
-import mysql.connector as db
-import logging
-from datetime import datetime, timedelta
+from sqlalchemy import create_engine,Column,Integer,String,LargeBinary,Boolean,DateTime,DECIMAL,Table,MetaData
+from sqlalchemy.orm import sessionmaker
+import sqlalchemy.orm
+import logging,datetime
+from datetime import timedelta, datetime
 from common import *
 
+db_name = 'reddit_scraper_dev'
+database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/{db_name}"
+Base = sqlalchemy.orm.declarative_base()
 
-######################
-######## SQL #########
-######################
 
-def create_db_connection():
-    connection = None
-    db_cred = get_az_secret("DB-CRED")
-    user_name = db_cred['username']
-    user_password = db_cred['password']
-    host_name = db_cred['url']
-    db_name = "reddit_scraper"
+def create_sqlalchemy_session():
+    engine = create_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    return session
+
+def reflect_table_metadata(engine, sub):
+    metadata = MetaData()
     try:
-        connection = db.connect(
-            host=host_name,
-            user=user_name,
-            password=user_password,
-            database=db_name
-        )
-        logging.info("create_db_connection: Connecting to DB...")
-    except db.Error as err:
-        print(f"Error: '{err}'")
-        logging.error(f"create_db_connection: Error opening DB connection: '{err}'")
-    return connection
+        metadata.reflect(bind=engine, only=[f'subreddit_{sub}'])
+    except Exception:
+        pass  # ignore if table does not exist
+    return metadata
+
+
+def create_subreddit_table(connection, metadata, sub):
+    inspector = sqlalchemy.inspect(connection)
+    table_name = f'subreddit_{sub}'
+
+    if inspector.has_table(table_name):
+        return metadata.tables[table_name]
+
+    return Table(
+        table_name,
+        metadata,
+        Column('id', String(255), primary_key=True),
+        Column('title', String(255)),
+        Column('author', String(255)),
+        Column('score', Integer),
+        Column('upvote_ratio', DECIMAL),
+        Column('num_comments', Integer),
+        Column('created_utc', DateTime),
+        Column('flair', String(255)),
+        Column('is_original_content', Boolean),
+        Column('is_self', Boolean),
+        Column('over_18', Boolean),
+        Column('stickied', Boolean),
+        Column('permalink', String(255)),
+        Column('path', String(255)),
+        Column('videohash', LargeBinary()),
+        Column('is_downloaded', Boolean)
+    )
+
+
+def create_subreddit_class(connection, metadata, sub):
+    subreddit_table = create_subreddit_table(connection, metadata, sub)
+    class Subreddit(Base):
+        __table__ = subreddit_table
+    return Subreddit
 
 
 def create_sub_table(sub):
-    connection = create_db_connection()
-    cursor = connection.cursor()
+    engine = create_engine(database_url)
+    metadata = reflect_table_metadata(engine, sub)
     try:
-        statement = f"""
-        
-        CREATE TABLE subreddit_{sub} (
-            id varchar(255),
-            title varchar(255),
-            author varchar(255),
-            score int,
-            upvote_ratio DECIMAL,
-            num_comments int,
-            created_utc DATETIME,
-            flair varchar(255),
-            is_original_content BOOL,
-            is_self BOOL,
-            over_18 BOOL,
-            stickied BOOL,
-            permalink varchar(255),
-            path varchar(255),
-            videohash binary(66),
-            is_downloaded BOOL,
-            PRIMARY KEY (id)
-                );
-        
-        """
-        cursor.execute(statement)
-        connection.commit()
-        print(f'Successfully created table subreddit_{sub} in the db')
-        logging.info(f'create_sub_table: Successfully created table subreddit_{sub} in the db')
-        cursor.close()
-    except db.Error as e:
-        print("Error creating table", e)
-        logging.error(f'create_sub_table: Error creating table subreddit_{sub} in the db.')
+        with engine.connect() as connection:
+            Subreddit = create_subreddit_class(connection, metadata, sub)
+            subreddit_table = Subreddit.__table__
+            if not sqlalchemy.inspect(connection).has_table(f'subreddit_{sub}'):
+                subreddit_table.create(bind=connection, checkfirst=True)
+                Base.metadata.remove(subreddit_table)
+                print(f'Successfully created table {subreddit_table.name} in the db')
+                logging.info(f'create_sub_table: Successfully created table {subreddit_table.name} in the db')
+            else:
+                print(f'Table {subreddit_table.name} already exists in the db')
+                logging.info(f'create_sub_table: Table {subreddit_table.name} already exists in the db')
+    except sqlalchemy.exc.OperationalError as e:
+        msg = f"Error creating table subreddit_{sub} in the db: {str(e)}."
+        print(msg)
+        logging.exception(f'create_sub_table: {msg}')
+    except Exception as e:
+        msg = f"Error creating table subreddit_{sub} in the db: {str(e)}."
+        print(msg)
+        logging.error(f'create_sub_table: {msg}')
     finally:
-        if connection.is_connected():
-            connection.close()
-            cursor.close()
+        engine.dispose()
 
 
-def drop_table(table):
-    connection = create_db_connection()
-    cursor = connection.cursor()
+def drop_sub_table(sub):
+    engine = create_engine(database_url)
+    table_name = f'subreddit_{sub}'
     try:
-        cursor.execute(f"DROP TABLE IF EXISTS {table}")
-        connection.commit()
-        print(f'{table} dropped')
-        logging.info('drop_table: {table} dropped successfully')
-    except db.Error as e:
-        print("Error dropping table", e)
-        logging.error('drop_table: Error dropping table', e)
+        with engine.connect() as connection:
+            if sqlalchemy.inspect(connection).has_table(table_name):
+                metadata = MetaData()
+                metadata.reflect(bind=connection, only=[table_name])
+                subreddit_table = metadata.tables[table_name]
+                subreddit_table.drop(bind=connection)
+                print(f'Successfully dropped table {table_name} from the db')
+                logging.info(f'drop_sub_table: Successfully dropped table {table_name} from the db')
+            else:
+                print(f'Table {table_name} does not exist in the db')
+                logging.info(f'drop_sub_table: Table {table_name} does not exist in the db')
+    except sqlalchemy.exc.OperationalError as e:
+        msg = f"Error dropping table {table_name} from the db: {str(e)}."
+        print(msg)
+        logging.exception(f'drop_sub_table: {msg}')
+    except Exception as e:
+        msg = f"Error dropping table {table_name} from the db: {str(e)}."
+        print(msg)
+        logging.error(f'drop_sub_table: {msg}')
     finally:
-        if connection.is_connected():
-            connection.close()
-            cursor.close()
+        engine.dispose()
 
-
-##### Store reddit posts in DB ######
-# Todo
-# - Add the ability to update existing entries with the latest score
 
 def store_reddit_posts(sub, postlist):
-    connection = create_db_connection()
-    cursor = connection.cursor()
+    session = create_sqlalchemy_session()
     entrycount = 0
-    logging.info(f"store_reddit_posts: Storing reddit posts in subreddit_{sub}") 
+    logging.info(f"store_reddit_posts: Storing reddit posts in subreddit_{sub}")
+    metadata = reflect_table_metadata(session.bind, sub)
+
     for post in postlist:
         id = post['id']
-        title = cleanString(post['title'])[:255]
+        title = cleanString(post['title'][:255])
         author = post['author']
         score = post['score']
         upvote_ratio = post['upvote_ratio']
@@ -112,36 +137,32 @@ def store_reddit_posts(sub, postlist):
         permalink = post['permalink']
 
         try:
-            statement = f"""
-            
-            INSERT INTO subreddit_{sub} (id,title,author,score,upvote_ratio,num_comments,
-            created_utc,flair,is_original_content,is_self,over_18,stickied,permalink,path,videohash,is_downloaded) 
-            VALUES ("{id}","{title}","{author}",{score},{upvote_ratio},{num_comments},"{created_utc}",
-            "{flair}",{is_original_content},{is_self},{over_18},{stickied},"{permalink}",NULL,NULL,NULL)
-            
-            """
-            #print(statement)
-            logging.debug(f'store_reddit_posts: Attempting to comit {statement}')
-            cursor.execute(statement)
-            connection.commit()
-            #print("Successfully added entry to database")
-            entrycount+=1
-        except db.Error as e:
-            if e.errno != 1062:
+            Subreddit = create_subreddit_class(session.bind, metadata, sub)
+            session.add(Subreddit(id=id, title=title, author=author, score=score, upvote_ratio=upvote_ratio,
+                                   num_comments=num_comments, created_utc=created_utc, flair=flair,
+                                   is_original_content=is_original_content, is_self=is_self, over_18=over_18,
+                                   stickied=stickied, permalink=permalink))
+            session.commit()
+            entrycount += 1
+        except Exception as e:
+            if "Duplicate" not in str(e):
                 print("Error inserting data into table", e)
                 logging.error("store_reddit_posts: Error inserting data", e)
+            session.rollback()
             continue
     logging.info(f"store_reddit_posts: Completed adding posts for {sub} to database.")
-    if connection.is_connected():
-        connection.close()
-        cursor.close()
+    session.close()
     return print(f"Successfully added {entrycount} entries to database")
 
 
-def get_dl_list_period(sub,period):
-    connection = create_db_connection()
-    cursor = connection.cursor()
+
+
+def get_dl_list_period(sub, period):
+    engine = create_engine(database_url)
     sublist = load_sublist()
+    metadata = reflect_table_metadata(engine, sub)
+    Subreddit = create_subreddit_class(engine, metadata, sub)
+
     logging.info(f"get_dl_list_period: Getting download list for subreddit {sub} for the period {period} ")
 
     # Determine the start and end dates based on the period given
@@ -164,43 +185,39 @@ def get_dl_list_period(sub,period):
 
     if sub in sublist:
         try:
-            select_Query = f"""
-            SELECT title, permalink, id FROM subreddit_{sub} WHERE created_utc BETWEEN {start_date} AND {end_date} AND score > 500
-            """
-            logging.debug(f'get_dl_list_period: {select_Query}')
-            cursor.execute(select_Query)
-            dl_list = cursor.fetchall()
-
-            # for post in dl_list:
-            #     print(post[0])
-            #     print(post[1])
-        except db.Error as e:
+            with engine.connect() as connection:
+                session = sqlalchemy.orm.Session(bind=connection)
+                query = session.query(Subreddit.title, Subreddit.id, Subreddit.permalink).filter(
+                    Subreddit.created_utc.between(start_date, end_date), Subreddit.score > 500).all()
+                dl_list = [{"title": row.title, "id": row.id, "permalink": row.permalink} for row in query]
+                return dl_list
+        except Exception as e:
             print("Error reading data from table", e)
             logging.error("get_dl_list_period: Error reading data from table", e)
         finally:
-            if connection.is_connected():
-                connection.close()
-                cursor.close()
+            session.close()
     else:
         print("Invalid subreddit selected")
 
-    return dl_list
 
-
-def update_item_db(sub,v_hash,id,vid_uuid):
-    connection = create_db_connection()
-    cursor = connection.cursor()
+def update_item_db(sub, v_hash, id, vid_uuid):
+    engine = create_engine(database_url)
+    metadata = reflect_table_metadata(engine, sub)
+    Subreddit = create_subreddit_class(engine, metadata, sub)
     try:
-        sql = "UPDATE subreddit_{} SET videohash = '{}', path = '{}' WHERE id = '{}'".format(sub,v_hash,vid_uuid,id)
-        #print(sql)
-
-        cursor.execute(sql)
-
-        connection.commit()
-
-        print(cursor.rowcount, "record(s) updated")
-    except db.Error as e:
-        print("Error inserting data into table", e)
-        logging.error(f'update_item_db: Error inserting data into table',e)
-
-####### END SQL FUNCTIONS #######
+        with engine.connect() as connection:
+            result = connection.execute(
+                Subreddit.__table__.update().
+                where(Subreddit.__table__.c.id == id).
+                values(videohash=v_hash, path=vid_uuid))
+            print(result.rowcount, "record(s) updated")
+    except sqlalchemy.exc.OperationalError as e:
+        msg = f"Error updating record in subreddit_{sub}: {str(e)}."
+        print(msg)
+        logging.exception(f'update_item_db: {msg}')
+    except Exception as e:
+        msg = f"Error updating record in subreddit_{sub}: {str(e)}."
+        print(msg)
+        logging.error(f'update_item_db: {msg}')
+    finally:
+        engine.dispose()

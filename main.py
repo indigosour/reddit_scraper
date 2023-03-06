@@ -6,7 +6,7 @@ from database import *
 from peertube import *
 from common import *
 
-logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
+logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
 
 # Variables and config
 
@@ -106,12 +106,13 @@ def main_dl_period(sub, period):
         logging.info(f'main_dl_period: Downloading video posts for for {sub} and period {period}.')
         
         if len(dlList) > 0:
+            print(f"Downloading {len(dlList)} posts.")
             for post in dlList:
-                logging.debug(post[1])
-                print(f"Downloading {dlList.__len__} posts.")
-                sani_title = cleanString(post[0])
-                id = post[2]
-                url = str(post[1])
+                logging.debug(post['permalink'])
+                
+                sani_title = cleanString(post['title'])
+                id = post['id']
+                url = str(post['permalink'])
 
                 # Download video and store in working directory
                 try:
@@ -128,12 +129,12 @@ def main_dl_period(sub, period):
                 try:
                     v_hash = VideoHash(path=working_file)
                     hash_value = v_hash.hash
-                    logging.debug(f'get video hash: Video hash is {hash_value}')
+                    binary_data = int(hash_value, 2).to_bytes((len(hash_value) - 2) // 8 + 1, 'big')
+                    logging.debug(f'get video hash: Video hash is {binary_data}')
                 except Exception as e:
                     print(f"Error generating video hash: {e}")
                     logging.error(f"main_dl_period: Error generating video hash: {e}")
                     continue
-
 
                 # Upload video to peertube
                 try:
@@ -145,7 +146,7 @@ def main_dl_period(sub, period):
 
                 # Add video hash and path to database
                 try:
-                    update_item_db(sub, hash_value, id, vid_uuid)
+                    update_item_db(sub, binary_data, id, vid_uuid)
                 except Exception as e:
                     print(f"Error updating database: {e}")
                     logging.error("main_dl_period: Error updating database: {e}")
@@ -192,7 +193,7 @@ def update_DB():
     sublist = load_sublist()
     for sub in sublist:
         #drop_table(f"subreddit_{sub}")
-        #create_sub_table(f"{sub}")
+        create_sub_table(f"{sub}")
         #print(f"Table {sub} created moving on to download posts")
         for period in ["week","month","year","all"]:
             print(f'Gathering top posts from {sub} for the {period}...')
