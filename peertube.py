@@ -1,4 +1,4 @@
-import logging,requests,json,os
+import logging,requests,json,os,time
 from common import get_az_secret
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
@@ -56,30 +56,7 @@ def list_channels():
         print(f"Error decoding JSON: {e}")
         print(f"Response content: {res.content}")
         logging.error(f"list_channels: Error decoding JSON: {res.content} {e}")
-    
     return channel_list
-
-
-# Upload video to peertube instance
-
-# def upload_video(sub,title,video_path):
-#     videoChannelId = list_channels()[sub]
-#     filenamevar = os.path.basename(video_path)
-#     data = {'channelId': videoChannelId, 'name': title, 'privacy': 1}
-#     files = {
-#         'videofile': (filenamevar,open(video_path, 'rb'),'video/mp4',{'Expires': '0'})}
-#     headers = {
-#             'Authorization': 'Bearer ' + peertube_auth()
-#         }
-#     try:
-#         # Upload a video
-#             res = requests.post(url=f'{peertube_api_url}/videos/upload',headers=headers,files=files,data=data)
-#             print(f'Failed to upload {res.text}')
-#             v_id = res.json()['video']['uuid']
-
-#     except Exception as e:
-#         print("Exception when calling VideoApi->videos_upload_post: %s\n" % e)
-#     return v_id
 
 
 def upload_video(sub,title,video_path):
@@ -87,6 +64,7 @@ def upload_video(sub,title,video_path):
     try:
         videoChannelId = list_channels()[sub]
         filenamevar = os.path.basename(video_path)
+        title = f"r/{sub} - {title}"
         data = {'channelId': videoChannelId, 'name': title, 'privacy': 1}
         files = {
             'videofile': (filenamevar,open(video_path, 'rb'),'video/mp4',{'Expires': '0'})}
@@ -109,10 +87,15 @@ def upload_video(sub,title,video_path):
 
 # Create playlist in peertube
 
-def create_playlist(display_name,sub):
+def create_playlist(display_name,sub_pid):
     global peertube_token
-    videoChannelId = list_channels()[sub]
-    logging.info(f'create_playlist: Creating playlist {display_name} from {sub}')
+    
+    if type(sub_pid) == str:
+        videoChannelId = list_channels()[sub_pid]
+    elif type(sub_pid) == int:
+        videoChannelId = sub_pid
+
+    logging.info(f'create_playlist: Creating playlist {display_name}')
     privacy = 1
     headers = {
             'Authorization': 'Bearer ' + peertube_token
@@ -145,8 +128,79 @@ def add_video_playlist(v_id,p_id):
     }
     try:
         # Create playlilst
-            res = requests.post(url=f'{peertube_api_url}/video-playlists/{p_id}/videos',headers=headers,json=data)
+            requests.post(url=f'{peertube_api_url}/video-playlists/{p_id}/videos',headers=headers,json=data)
     except Exception as e:
         print(f'Error adding video to playlist {p_id}')
         logging.error(f'add_video_playlist: Error adding video to playlist {p_id}')
-    return logging.info(f'Video {v_id} added successfully to playlist {p_id}.')
+
+
+def list_videos(page):
+    global peertube_token
+    headers = {
+        'Authorization': 'Bearer' + ' ' + peertube_token
+    }
+    params = {'count': 100, 'sort': '-createdAt', 'page': page}
+    video_list = []
+    res = requests.get(url=f'{peertube_api_url}/videos', headers=headers, params=params)
+
+    try:
+        data = res.json()['data']
+        for i in data:
+            video_list.append(i['shortUUID'])
+    except json.decoder.JSONDecodeError as e:
+        print(f"Error decoding JSON: {e}")
+        print(f"Response content: {res.content}")
+        logging.error(f"list_channels: Error decoding JSON: {res.content} {e}")
+    
+    # Add delay to avoid "too many requests" error
+    time.sleep(1)
+
+    return video_list
+
+def delete_video(v_id):
+    global peertube_token
+    headers = {
+            'Authorization': 'Bearer ' + peertube_token
+        }
+    try:
+        # Create playlilst
+            requests.delete(url=f'{peertube_api_url}/videos/{v_id}',headers=headers)
+    except Exception as e:
+        print(f'Error deleting video {v_id}')
+        logging.error(f'delete_video: Error deleting video {v_id}')
+
+
+def delete_all_videos():
+    batch_size = 100
+    
+    def delete_batch(batch):
+        for v_id in batch:
+            delete_video(v_id)
+
+    # Set the initial page number to 1
+    page = 1
+
+    while True:
+        video_list = list_videos(page)
+        if len(video_list) == 0:
+            break
+        
+        # Divide videos into batches and create threads for each batch
+        num_batches = (len(video_list) + batch_size - 1) // batch_size
+        for i in range(num_batches):
+            start = i * batch_size
+            end = min(start + batch_size, len(video_list))
+            batch = video_list[start:end]
+            delete_batch(batch)
+
+        # Wait for videos to be deleted before checking the remaining list
+        time.sleep(1)
+
+        # Check the remaining list of videos to see if any were deleted
+        remaining_videos = list_videos(page)
+        if set(remaining_videos) == set(video_list):
+            print("Error: No videos were deleted.")
+            break
+
+        # Increment the page number to retrieve the next batch of videos
+        page += 1
