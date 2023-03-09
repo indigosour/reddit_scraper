@@ -18,15 +18,6 @@ working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 ####### REDDIT #######
 ######################
 
-def reddit_auth():
-    try: 
-        reddit = praw.Reddit(client_id=get_az_secret("REDDIT-CRED")['username'],
-                                    client_secret=get_az_secret("REDDIT-CRED")['password'],
-                                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")
-        return reddit
-    except Exception as e:
-        print("Exception caught",e)
-
 # get_reddit_list: Get reddit posts and store in a list
 
 # Get the requested number of new posts from the subreddit with minimum upvotes required
@@ -118,7 +109,7 @@ def main_dl_period(sub,period,playlist_id):
                 except Exception as e:
                     print(f"Error downloading video: {e}")
                     logging.error(f"main_dl_period: Error downloading video: {e}")
-                    continue
+                    break
                 time.sleep(0.500)
 
                 working_file = glob.glob(f"{working_dir}/*.mp4")[0]
@@ -132,7 +123,7 @@ def main_dl_period(sub,period,playlist_id):
                 except Exception as e:
                     print(f"Error generating video hash: {e}")
                     logging.error(f"main_dl_period: Error generating video hash: {e}")
-                    continue
+                    break
 
                 # Upload video to peertube
                 try:
@@ -140,15 +131,16 @@ def main_dl_period(sub,period,playlist_id):
                 except Exception as e:
                     print(f"Error uploading video: {e}")
                     logging.error(f"main_dl_period: Error uploading video: {e}")
-                    continue
+                    break
 
                 # Add video hash and path to database
                 try:
                     update_item_db(sub, binary_data, id, vid_uuid)
+                    print(f'{sub} {binary_data} {id} {vid_uuid}')
                 except Exception as e:
                     print(f"Error updating database: {e}")
                     logging.error("main_dl_period: Error updating database: {e}")
-                    continue
+                    break
 
                 # Add video to same playlist
                 try:
@@ -156,7 +148,7 @@ def main_dl_period(sub,period,playlist_id):
                 except Exception as e:
                     print(f"Error adding video to playlist: {e}")
                     logging.error(f'main_dl_period: Error adding video to playlist: {e}')
-                    continue
+                    break
                 
                 # Remove uploaded video
                 try:
