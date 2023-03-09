@@ -8,15 +8,22 @@ from common import *
 db_name = 'reddit_scraper'
 database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/{db_name}"
 Base = sqlalchemy.orm.declarative_base()
+engine = create_engine(database_url)
+
+
+def create_subreddit_class(connection, metadata, sub):
+    subreddit_table = subreddit_table_class(connection, metadata, sub)
+    class Subreddit(Base):
+        __table__ = subreddit_table
+    return Subreddit
 
 
 def create_sqlalchemy_session():
-    engine = create_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
     return session
 
-def reflect_table_metadata(engine, sub):
+def reflect_table_metadata(sub):
     metadata = MetaData()
     try:
         metadata.reflect(bind=engine, only=[f'subreddit_{sub}'])
@@ -25,7 +32,7 @@ def reflect_table_metadata(engine, sub):
     return metadata
 
 
-def create_subreddit_table(connection, metadata, sub):
+def subreddit_table_class(connection, metadata, sub):
     inspector = sqlalchemy.inspect(connection)
     table_name = f'subreddit_{sub}'
 
@@ -54,16 +61,8 @@ def create_subreddit_table(connection, metadata, sub):
     )
 
 
-def create_subreddit_class(connection, metadata, sub):
-    subreddit_table = create_subreddit_table(connection, metadata, sub)
-    class Subreddit(Base):
-        __table__ = subreddit_table
-    return Subreddit
-
-
 def create_sub_table(sub):
-    engine = create_engine(database_url)
-    metadata = reflect_table_metadata(engine, sub)
+    metadata = reflect_table_metadata(sub)
     try:
         with engine.connect() as connection:
             Subreddit = create_subreddit_class(connection, metadata, sub)
@@ -89,13 +88,11 @@ def create_sub_table(sub):
 
 
 def drop_sub_table(sub):
-    engine = create_engine(database_url)
     table_name = f'subreddit_{sub}'
     try:
         with engine.connect() as connection:
             if sqlalchemy.inspect(connection).has_table(table_name):
-                metadata = MetaData()
-                metadata.reflect(bind=connection, only=[table_name])
+                metadata = reflect_table_metadata(sub)
                 subreddit_table = metadata.tables[table_name]
                 subreddit_table.drop(bind=connection)
                 print(f'Successfully dropped table {table_name} from the db')
@@ -156,7 +153,6 @@ def store_reddit_posts(sub, postlist):
 
 
 def get_dl_list_period(sub, period):
-    engine = create_engine(database_url)
     sublist = load_sublist()
     metadata = reflect_table_metadata(engine, sub)
     Subreddit = create_subreddit_class(engine, metadata, sub)
@@ -199,7 +195,6 @@ def get_dl_list_period(sub, period):
 
 
 def update_item_db(sub, v_hash, id, vid_uuid):
-    engine = create_engine(database_url)
     metadata = reflect_table_metadata(engine, sub)
     Subreddit = create_subreddit_class(engine, metadata, sub)
     try:
@@ -219,3 +214,13 @@ def update_item_db(sub, v_hash, id, vid_uuid):
         logging.error(f'update_item_db: {msg}')
     finally:
         engine.dispose()
+
+def drop_all_tables():
+    sublist = load_sublist()
+    for sub in sublist:
+        drop_sub_table(sub)
+
+def create_all_tables():
+    sublist = load_sublist()
+    for sub in sublist:
+        create_sub_table(sub)
