@@ -1,4 +1,4 @@
-import os,json,emoji,re,logging
+import os,json,emoji,re,logging,praw
 from azure.keyvault.secrets import SecretClient
 from azure.identity import ClientSecretCredential
 
@@ -43,3 +43,12 @@ def get_az_secret(key_name):
     except Exception as e:
         logging.error(f"get_az_secret: Error retrieving secret '{key_name}' from Azure Key Vault: {e}")
         raise
+
+def reddit_auth():
+    try: 
+        reddit = praw.Reddit(client_id=get_az_secret("REDDIT-CRED")['username'],
+                                    client_secret=get_az_secret("REDDIT-CRED")['password'],
+                                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")
+        return reddit
+    except Exception as e:
+        print("Exception caught",e)
