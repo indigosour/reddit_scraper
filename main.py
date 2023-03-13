@@ -14,55 +14,6 @@ logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
 
-######################
-####### REDDIT #######
-######################
-
-# get_reddit_list: Get reddit posts and store in a list
-
-# Get the requested number of new posts from the subreddit with minimum upvotes required
-# and return a post list to upload to the database.
-
-# Submit: Subreddit (sub) and number (num) of posts to get
-# Return: Number of posts requested including id, title, author, score, etc.
-
-def get_reddit_list(sub,period):
-    reddit = reddit_auth()
-    num = 1000
-    posts = reddit.subreddit(f'{sub}').top(time_filter=f'{period}',limit=num)
-    logging.info(f'get_reddit_list: Getting list for {sub} for {period}')
-    postlist = []
-    
-    for post in posts:
-        if post.author != None and post.is_video == True:
-            try:
-                logging.debug(f'get_reddit_list: {post}')
-                postlist.append({
-                "id": post.id,
-                "title": cleanString(post.title),
-                "author": post.author.name,
-                "score": post.score,
-                "upvote_ratio": post.upvote_ratio,
-                "num_comments": post.num_comments,
-                "created_utc": str(datetime.fromtimestamp(int(post.created_utc)).strftime('%Y-%m-%d %H:%M:%S')).strip(),
-                "flair": post.link_flair_text,
-                "is_original_content": post.is_original_content,
-                "is_self": post.is_self,
-                "over_18": post.over_18,
-                "stickied": post.stickied,
-                "permalink": "https://reddit.com" + post.permalink,
-                })            
-            except Exception as e:
-                logging.error(f'get_reddit_list: Error getting post.',e)
-                print(e)
-    
-    if len(postlist) > 10:
-        logging.info(f'get_reddit_list: Successfully retrieved reddit list for {sub} for period {period}')
-    else:
-        logging.error(f'get_reddit_list: Failure to retrieve reddit list for {sub} for period {period}')
-    return postlist
-
-
 # Download video posts
 
 def download_video(url,path):
@@ -71,6 +22,17 @@ def download_video(url,path):
     reddit.path = path
     reddit.download()
 
+# Cleanup working directory of files and folders
+
+def cleanup_workingdir():
+    working_folder_list = glob.glob(f"{working_dir}/*")
+    for i in working_folder_list:
+        shutil.rmtree(i,True)
+    working_folder_list = glob.glob(f"{working_dir}/*")
+    for i in working_folder_list:
+        os.remove(i)
+    return print("Cleaned up working directory")
+
 
 ###########################
 ##### MAIN FUNCTIONS ######
@@ -78,17 +40,15 @@ def download_video(url,path):
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-
-
 def main_dl_period(sub,period,playlist_id):
     try:
         global working_dir
         # Get list of posts for download
-        dlList = get_dl_list_period(f'{sub}', f'{period}')
+        dlList = get_dl_list_period(sub,period)
 
         # Run peertube auth to get token for this session
         peertube_auth()
-        
+
         logging.info(f'main_dl_period: Beginning main_dl_period creating playlist for {sub} and period {period}.')
         
         # Download each video post
@@ -96,6 +56,7 @@ def main_dl_period(sub,period,playlist_id):
         
         if len(dlList) > 0:
             print(f"Downloading {len(dlList)} posts.")
+
             for post in dlList:
                 logging.debug(post['permalink'])
                 
@@ -135,14 +96,14 @@ def main_dl_period(sub,period,playlist_id):
 
                 # Add video hash and path to database
                 try:
-                    update_item_db(sub, binary_data, id, vid_uuid)
+                    insert_inventory(binary_data, id, vid_uuid)
                     print(f'{sub} {binary_data} {id} {vid_uuid}')
                 except Exception as e:
                     print(f"Error updating database: {e}")
                     logging.error("main_dl_period: Error updating database: {e}")
                     break
 
-                # Add video to same playlist
+                # Add video to playlist p_id
                 try:
                     add_video_playlist(vid_uuid, playlist_id)
                 except Exception as e:
@@ -170,30 +131,6 @@ def main_dl_period(sub,period,playlist_id):
         print(f"Error occurred: {e}")
     except KeyboardInterrupt:
         print('Interrupted')
-
-
-def cleanup_workingdir():
-    working_folder_list = glob.glob(f"{working_dir}/*")
-    for i in working_folder_list:
-        shutil.rmtree(i,True)
-    working_folder_list = glob.glob(f"{working_dir}/*")
-    for i in working_folder_list:
-        os.remove(i)
-    return print("Cleaned up working directory")
-
-
-def update_DB():
-    sublist = load_sublist()
-    for sub in sublist:
-        #drop_table(f"subreddit_{sub}")
-        create_sub_table(f"{sub}")
-        #print(f"Table {sub} created moving on to download posts")
-        for period in ["week","month","year","all"]:
-            print(f'Gathering top posts from {sub} for the {period}...')
-            postlist = get_reddit_list(sub,period)
-            print(f'Found {len(postlist)} posts. Now storing them...')
-            store_reddit_posts(sub,postlist)
-            print(f'Finished storing top of {sub} for the {period}')
 
 
 def grab_dat(period):
