@@ -44,6 +44,7 @@ class Inventory(Base):
     post_id = Column(Integer, primary_key=True)
     last_updated = Column(DateTime)
     watched = Column(Boolean)
+    stored = Column(Boolean)
     tube_id = Column(String(length=255))
 
     def __repr__(self):
@@ -65,7 +66,7 @@ def stream_and_store_posts():
     subreddit_list = "+".join(sublist)
     for submission in reddit.subreddit(subreddit_list).stream.submissions():
         post = Post(
-            id=submission.id,
+            post_id=submission.id,
             title=cleanString(submission.title)[:500],
             author=submission.author.name,
             subreddit=submission.subreddit,
