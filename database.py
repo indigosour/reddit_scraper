@@ -1,162 +1,149 @@
-from sqlalchemy import create_engine,Column,Integer,String,LargeBinary,Boolean,DateTime,DECIMAL,Table,MetaData
+from sqlalchemy import create_engine,Column,Integer,String,Boolean,DateTime,DECIMAL,text
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy.orm
-import logging,datetime
+from sqlalchemy.exc import IntegrityError, DataError, SQLAlchemyError
+import logging,datetime,threading
 from datetime import timedelta, datetime
 from common import *
 
 db_name = 'reddit_scraper'
 database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/{db_name}"
 Base = sqlalchemy.orm.declarative_base()
+
 engine = create_engine(database_url)
 
-
-def create_subreddit_class(connection, metadata, sub):
-    subreddit_table = subreddit_table_class(connection, metadata, sub)
-    class Subreddit(Base):
-        __table__ = subreddit_table
-    return Subreddit
-
-
 def create_sqlalchemy_session():
+    engine = create_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
     return session
 
-def reflect_table_metadata(sub):
-    metadata = MetaData()
-    try:
-        metadata.reflect(bind=engine, only=[f'subreddit_{sub}'])
-    except Exception:
-        pass  # ignore if table does not exist
-    return metadata
+
+class Post(Base):
+    __tablename__ = 'posts'
+
+    post_id = Column(String(8), primary_key=True)
+    title = Column(String(500))
+    author = Column(String(255))
+    subreddit = Column(String(255))
+    score = Column(Integer)
+    upvote_ratio = Column(DECIMAL(precision=5, scale=4))
+    num_comments = Column(Integer)
+    created_utc = Column(DateTime)
+    last_updated = Column(DateTime)
+    is_downloaded = Column(Boolean)
+    permalink = Column(String(255))
+    is_original_content = Column(Boolean)
+    over_18 = Column(Boolean)
+
+    def __repr__(self):
+        return f"<Post(id='{self.post_id}', title='{self.title}', subreddit='{self.subreddit}')>"
 
 
-def subreddit_table_class(connection, metadata, sub):
-    inspector = sqlalchemy.inspect(connection)
-    table_name = f'subreddit_{sub}'
+class Inventory(Base):
+    __tablename__ = 'inventory'
 
-    if inspector.has_table(table_name):
-        return metadata.tables[table_name]
+    post_id = Column(String(length=8), primary_key=True)
+    last_updated = Column(DateTime)
+    watched = Column(Boolean)
+    stored = Column(Boolean)
+    tube_id = Column(String(length=255))
+    videohash = Column(String(length=66),unique=True)
 
-    return Table(
-        table_name,
-        metadata,
-        Column('id', String(255), primary_key=True),
-        Column('title', String(255)),
-        Column('author', String(255)),
-        Column('score', Integer),
-        Column('upvote_ratio', DECIMAL),
-        Column('num_comments', Integer),
-        Column('created_utc', DateTime),
-        Column('flair', String(255)),
-        Column('is_original_content', Boolean),
-        Column('is_self', Boolean),
-        Column('over_18', Boolean),
-        Column('stickied', Boolean),
-        Column('permalink', String(255)),
-        Column('path', String(255)),
-        Column('videohash', LargeBinary()),
-        Column('is_downloaded', Boolean)
-    )
+    def __repr__(self):
+        return f"<Inventory(id='{self.post_id}')>"
 
 
-def create_sub_table(sub):
-    metadata = reflect_table_metadata(sub)
-    try:
-        with engine.connect() as connection:
-            Subreddit = create_subreddit_class(connection, metadata, sub)
-            subreddit_table = Subreddit.__table__
-            if not sqlalchemy.inspect(connection).has_table(f'subreddit_{sub}'):
-                subreddit_table.create(bind=connection, checkfirst=True)
-                Base.metadata.remove(subreddit_table)
-                print(f'Successfully created table {subreddit_table.name} in the db')
-                logging.info(f'create_sub_table: Successfully created table {subreddit_table.name} in the db')
-            else:
-                print(f'Table {subreddit_table.name} already exists in the db')
-                logging.info(f'create_sub_table: Table {subreddit_table.name} already exists in the db')
-    except sqlalchemy.exc.OperationalError as e:
-        msg = f"Error creating table subreddit_{sub} in the db: {str(e)}."
-        print(msg)
-        logging.exception(f'create_sub_table: {msg}')
-    except Exception as e:
-        msg = f"Error creating table subreddit_{sub} in the db: {str(e)}."
-        print(msg)
-        logging.error(f'create_sub_table: {msg}')
-    finally:
-        engine.dispose()
+def create_table():
+    Base.metadata.create_all(engine)
+
+def drop_table():
+    Base.metadata.drop_all(engine)
 
 
-def drop_sub_table(sub):
-    table_name = f'subreddit_{sub}'
-    try:
-        with engine.connect() as connection:
-            if sqlalchemy.inspect(connection).has_table(table_name):
-                metadata = reflect_table_metadata(sub)
-                subreddit_table = metadata.tables[table_name]
-                subreddit_table.drop(bind=connection)
-                print(f'Successfully dropped table {table_name} from the db')
-                logging.info(f'drop_sub_table: Successfully dropped table {table_name} from the db')
-            else:
-                print(f'Table {table_name} does not exist in the db')
-                logging.info(f'drop_sub_table: Table {table_name} does not exist in the db')
-    except sqlalchemy.exc.OperationalError as e:
-        msg = f"Error dropping table {table_name} from the db: {str(e)}."
-        print(msg)
-        logging.exception(f'drop_sub_table: {msg}')
-    except Exception as e:
-        msg = f"Error dropping table {table_name} from the db: {str(e)}."
-        print(msg)
-        logging.error(f'drop_sub_table: {msg}')
-    finally:
-        engine.dispose()
+def process_subreddit_update():
+    sublist = load_sublist()
+    threads = []
+    for sub in sublist:
+        thread = threading.Thread(target=store_reddit_posts, args=(sub,))
+        threads.append(thread)
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    print("Completed updating database with all posts from all tracked subreddits")
 
 
-def store_reddit_posts(sub, postlist):
+def store_reddit_posts(sub):
     session = create_sqlalchemy_session()
-    entrycount = 0
-    logging.info(f"store_reddit_posts: Storing reddit posts in subreddit_{sub}")
-    metadata = reflect_table_metadata(session.bind, sub)
+    logging.info(f"store_reddit_posts: Storing reddit posts...")
+    reddit = reddit_auth()
+    sub_entrycount = 0
+    
+    for period in ["day","week","month","year","all"]:
+        period_entrycount = 0
+        posts = reddit.subreddit(sub).top(
+            time_filter=period,
+            limit=1000
+        )
 
-    for post in postlist:
-        id = post['id']
-        title = cleanString(post['title'][:255])
-        author = post['author']
-        score = post['score']
-        upvote_ratio = post['upvote_ratio']
-        num_comments = post['num_comments']
-        created_utc = post['created_utc']
-        flair = cleanString(post['flair'])
-        is_original_content = post['is_original_content']
-        is_self = post['is_self']
-        over_18 = post['over_18']
-        stickied = post['stickied']
-        permalink = post['permalink']
+        for submission in posts:
+            if submission.author != None and submission.is_video == True:
+                post = Post(
+                    post_id=submission.id,
+                    title=cleanString(submission.title)[:500],
+                    author=submission.author.name,
+                    subreddit=submission.subreddit,
+                    score=submission.score,
+                    upvote_ratio=submission.upvote_ratio,
+                    num_comments=submission.num_comments,
+                    created_utc=datetime.fromtimestamp(int(submission.created_utc)),
+                    is_original_content=submission.is_original_content,
+                    over_18=submission.over_18,
+                    permalink="https://reddit.com" + submission.permalink,
+                    last_updated=datetime.now()
+                )
 
-        try:
-            Subreddit = create_subreddit_class(session.bind, metadata, sub)
-            session.add(Subreddit(id=id, title=title, author=author, score=score, upvote_ratio=upvote_ratio,
-                                   num_comments=num_comments, created_utc=created_utc, flair=flair,
-                                   is_original_content=is_original_content, is_self=is_self, over_18=over_18,
-                                   stickied=stickied, permalink=permalink))
-            session.commit()
-            entrycount += 1
-        except Exception as e:
-            if "Duplicate" not in str(e):
-                print("Error inserting data into table", e)
-                logging.error("store_reddit_posts: Error inserting data", e)
-            session.rollback()
-            continue
-    logging.info(f"store_reddit_posts: Completed adding posts for {sub} to database.")
+                try:
+                    session.execute(
+                        text("""
+                            INSERT INTO posts (post_id, title, author, subreddit, score, upvote_ratio, num_comments, created_utc, is_original_content, over_18, permalink, last_updated)
+                            VALUES (:post_id, :title, :author, :subreddit, :score, :upvote_ratio, :num_comments, :created_utc, :is_original_content, :over_18, :permalink, :last_updated)
+                        """),
+                        {
+                            "post_id": post.post_id,
+                            "title": post.title,
+                            "author": post.author,
+                            "subreddit": post.subreddit,
+                            "score": post.score,
+                            "upvote_ratio": post.upvote_ratio,
+                            "num_comments": post.num_comments,
+                            "created_utc": post.created_utc,
+                            "is_original_content": post.is_original_content,
+                            "over_18": post.over_18,
+                            "permalink": post.permalink,
+                            "last_updated": post.last_updated
+                        }
+                    )
+                    session.commit()
+                    period_entrycount += 1
+                    sub_entrycount += 1
+                except (IntegrityError, DataError) as e:
+                    print("Error rolloing back, then moving on to next post",e)
+                    session.rollback()
+                    continue
+
+        print(f"Successfully added {period_entrycount} entries for {sub} to the database for the period {period}")
+        logging.info(f"Successfully added {period_entrycount} entries for {sub} to the database for the period {period}")
+        
     session.close()
-    return print(f"Successfully added {entrycount} entries to database")
+    logging.info(f"store_reddit_posts: Successfully added {sub_entrycount} entries for {sub} to the database")
+    return print(f"Successfully added {sub_entrycount} entries for {sub} to the database")
 
 
 def get_dl_list_period(sub, period):
     sublist = load_sublist()
-    metadata = reflect_table_metadata(engine, sub)
-    Subreddit = create_subreddit_class(engine, metadata, sub)
-
+    session = create_sqlalchemy_session()
     logging.info(f"get_dl_list_period: Getting download list for subreddit {sub} for the period {period} ")
 
     # Determine the start and end dates based on the period given
@@ -181,10 +168,20 @@ def get_dl_list_period(sub, period):
         try:
             with engine.connect() as connection:
                 session = sqlalchemy.orm.Session(bind=connection)
-                query = session.query(Subreddit.title, Subreddit.id, Subreddit.permalink).filter(
-                    Subreddit.created_utc.between(start_date, end_date), Subreddit.score > 500).all()
-                dl_list = [{"title": row.title, "id": row.id, "permalink": row.permalink} for row in query]
+                query = session.query(Post.title, Post.post_id, Post.permalink, Post.author, Post.permalink,
+                                      Post.score, Post.upvote_ratio, Post.num_comments, Post.created_utc).filter(
+                    Post.created_utc.between(start_date, end_date), Post.score > 500).all()
+                dl_list = [{"title": row.title, 
+                            "id": row.post_id, 
+                            "author": row.author,
+                            "permalink": row.permalink, 
+                            "score": row.score,
+                            "upvote_ratio": row.upvote_ratio,
+                            "num_comments": row.num_comments,
+                            "created_utc": row.created_utc,
+                            } for row in query]
                 return dl_list
+            
         except Exception as e:
             print("Error reading data from table", e)
             logging.error("get_dl_list_period: Error reading data from table", e)
@@ -194,33 +191,60 @@ def get_dl_list_period(sub, period):
         print("Invalid subreddit selected")
 
 
-def update_item_db(sub, v_hash, id, vid_uuid):
-    metadata = reflect_table_metadata(engine, sub)
-    Subreddit = create_subreddit_class(engine, metadata, sub)
+def update_posts(post_id, score, num_comments):
+    session = create_sqlalchemy_session()
+
+    for submission in posts:
+        if submission.author != None and submission.is_video == True:
+            post = Post(
+                post_id=submission.id,
+                title=cleanString(submission.title)[:500],
+                author=submission.author.name,
+                subreddit=submission.subreddit,
+                score=submission.score,
+                upvote_ratio=submission.upvote_ratio,
+                num_comments=submission.num_comments,
+                created_utc=datetime.fromtimestamp(int(submission.created_utc)),
+                is_original_content=submission.is_original_content,
+                over_18=submission.over_18,
+                permalink="https://reddit.com" + submission.permalink,
+                last_updated=datetime.now()
+            )
+
     try:
-        with engine.connect() as connection:
-            result = connection.execute(
-                Subreddit.__table__.update().
-                where(Subreddit.__table__.c.id == id).
-                values(videohash=v_hash, path=vid_uuid))
-            print(result.rowcount, "record(s) updated")
-    except sqlalchemy.exc.OperationalError as e:
-        msg = f"Error updating record in subreddit_{sub}: {str(e)}."
-        print(msg)
-        logging.exception(f'update_item_db: {msg}')
-    except Exception as e:
-        msg = f"Error updating record in subreddit_{sub}: {str(e)}."
-        print(msg)
-        logging.error(f'update_item_db: {msg}')
+        session.query(Post).filter_by(post_id=post_id).update(
+            {
+                'score': score,
+                'num_comments': num_comments,
+                'upvote_ratio': upvote_ratio,
+                'last_updated': datetime.now()
+            })
+
+        session.commit()
+        logging.info(f"update_posts: Successfully updated post {post_id}")
+    except SQLAlchemyError as e:
+        session.rollback()
+        logging.error(f"update_posts: Failed to update post {post_id}. Error message: {e}")
     finally:
-        engine.dispose()
+        session.close()
 
-def drop_all_tables():
-    sublist = load_sublist()
-    for sub in sublist:
-        drop_sub_table(sub)
 
-def create_all_tables():
-    sublist = load_sublist()
-    for sub in sublist:
-        create_sub_table(sub)
+def insert_inventory(hash, post_id, vid_uuid):
+    session = create_sqlalchemy_session()
+
+    try:
+        new_item = Inventory(
+            videohash=hash,
+            post_id=post_id,
+            stored=True,
+            tube_id=vid_uuid,
+            last_updated=datetime.now()
+        )
+        session.add(new_item)
+        session.commit()
+        logging.info(f"insert_inventory: Successfully inserted new inventory item {post_id}")
+    except SQLAlchemyError as e:
+        session.rollback()
+        logging.error(f"insert_inventory: Failed to insert new inventory item {post_id}. Error message: {e}")
+    finally:
+        session.close()
