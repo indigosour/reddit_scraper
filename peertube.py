@@ -59,13 +59,13 @@ def list_channels():
     return channel_list
 
 
-def upload_video(sub,title,video_path):
+def upload_video(sub,title,video_path,description):
     global peertube_token
     try:
-        videoChannelId = list_channels()[sub]
+        videoChannelId = 2
         filenamevar = os.path.basename(video_path)
         title = f"r/{sub} - {title}"
-        data = {'channelId': videoChannelId, 'name': title, 'privacy': 1}
+        data = {'channelId': videoChannelId, 'name': title, 'description': description, 'privacy': 1}
         files = {
             'videofile': (filenamevar,open(video_path, 'rb'),'video/mp4',{'Expires': '0'})}
         headers = {
@@ -172,7 +172,8 @@ def delete_video(v_id):
 
 def delete_all_videos():
     batch_size = 100
-    
+    peertube_auth()
+
     def delete_batch(batch):
         for v_id in batch:
             delete_video(v_id)
@@ -192,6 +193,7 @@ def delete_all_videos():
             end = min(start + batch_size, len(video_list))
             batch = video_list[start:end]
             delete_batch(batch)
+            time.sleep(2)
 
         # Wait for videos to be deleted before checking the remaining list
         time.sleep(1)

@@ -2,9 +2,10 @@ from sqlalchemy import create_engine,Column,Integer,String,Boolean,DateTime,DECI
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy.orm
 from sqlalchemy.exc import IntegrityError, DataError, SQLAlchemyError
-import logging,datetime,threading
+import logging,datetime,threading,random,prawcore
 from datetime import timedelta, datetime
 from common import *
+from reddit import *
 
 db_name = 'reddit_scraper'
 database_url = f"mysql+pymysql://{get_az_secret('DB-CRED')['username']}:{get_az_secret('DB-CRED')['password']}@{get_az_secret('DB-CRED')['url']}:3306/{db_name}"
@@ -77,30 +78,25 @@ def process_subreddit_update():
 def store_reddit_posts(sub):
     session = create_sqlalchemy_session()
     logging.info(f"store_reddit_posts: Storing reddit posts...")
-    reddit = reddit_auth()
     sub_entrycount = 0
     
     for period in ["day","week","month","year","all"]:
         period_entrycount = 0
-        posts = reddit.subreddit(sub).top(
-            time_filter=period,
-            limit=1000
-        )
-
-        for submission in posts:
-            if submission.author != None and submission.is_video == True:
+        posts = get_reddit_posts(sub,period)
+        for i in posts:
+            if i.author != None and i.is_video == True:
                 post = Post(
-                    post_id=submission.id,
-                    title=cleanString(submission.title)[:500],
-                    author=submission.author.name,
-                    subreddit=submission.subreddit,
-                    score=submission.score,
-                    upvote_ratio=submission.upvote_ratio,
-                    num_comments=submission.num_comments,
-                    created_utc=datetime.fromtimestamp(int(submission.created_utc)),
-                    is_original_content=submission.is_original_content,
-                    over_18=submission.over_18,
-                    permalink="https://reddit.com" + submission.permalink,
+                    post_id=i.id,
+                    title=cleanString(i.title)[:500],
+                    author=i.author.name,
+                    subreddit=i.subreddit,
+                    score=i.score,
+                    upvote_ratio=i.upvote_ratio,
+                    num_comments=i.num_comments,
+                    created_utc=datetime.fromtimestamp(int(i.created_utc)),
+                    is_original_content=i.is_original_content,
+                    over_18=i.over_18,
+                    permalink="https://reddit.com" + i.permalink,
                     last_updated=datetime.now()
                 )
 
@@ -128,8 +124,7 @@ def store_reddit_posts(sub):
                     session.commit()
                     period_entrycount += 1
                     sub_entrycount += 1
-                except (IntegrityError, DataError) as e:
-                    print("Error rolloing back, then moving on to next post",e)
+                except (IntegrityError, DataError):
                     session.rollback()
                     continue
 
@@ -141,10 +136,9 @@ def store_reddit_posts(sub):
     return print(f"Successfully added {sub_entrycount} entries for {sub} to the database")
 
 
-def get_dl_list_period(sub, period):
-    sublist = load_sublist()
+def get_dl_list_period(period):
     session = create_sqlalchemy_session()
-    logging.info(f"get_dl_list_period: Getting download list for subreddit {sub} for the period {period} ")
+    logging.info(f"get_dl_list_period: Getting download list for the period {period} ")
 
     # Determine the start and end dates based on the period given
     if period == "day":
@@ -164,31 +158,29 @@ def get_dl_list_period(sub, period):
 
     logging.info(f"get_dl_list_period: Period calculated \nStart Date: {start_date} and End Date: {end_date}")
 
-    if sub in sublist:
-        try:
-            with engine.connect() as connection:
-                session = sqlalchemy.orm.Session(bind=connection)
-                query = session.query(Post.title, Post.post_id, Post.permalink, Post.author, Post.permalink,
-                                      Post.score, Post.upvote_ratio, Post.num_comments, Post.created_utc).filter(
-                    Post.created_utc.between(start_date, end_date), Post.score > 500).all()
-                dl_list = [{"title": row.title, 
-                            "id": row.post_id, 
-                            "author": row.author,
-                            "permalink": row.permalink, 
-                            "score": row.score,
-                            "upvote_ratio": row.upvote_ratio,
-                            "num_comments": row.num_comments,
-                            "created_utc": row.created_utc,
-                            } for row in query]
-                return dl_list
-            
-        except Exception as e:
-            print("Error reading data from table", e)
-            logging.error("get_dl_list_period: Error reading data from table", e)
-        finally:
-            session.close()
-    else:
-        print("Invalid subreddit selected")
+    try:
+        with engine.connect() as connection:
+            session = sqlalchemy.orm.Session(bind=connection)
+            query = session.query(Post.title, Post.post_id, Post.permalink, Post.author, Post.permalink,
+                                    Post.score, Post.upvote_ratio, Post.num_comments, Post.created_utc, Post.subreddit).filter(
+                Post.created_utc.between(start_date, end_date), Post.score > 500).all()
+            dl_list = [{"title": row.title, 
+                        "subreddit": row.subreddit,
+                        "id": row.post_id, 
+                        "author": row.author,
+                        "permalink": row.permalink, 
+                        "score": row.score,
+                        "upvote_ratio": row.upvote_ratio,
+                        "num_comments": row.num_comments,
+                        "created_utc": row.created_utc,
+                        } for row in query]
+            return dl_list
+        
+    except Exception as e:
+        print("Error reading data from table", e)
+        logging.error("get_dl_list_period: Error reading data from table", e)
+    finally:
+        session.close()
 
 
 def update_posts(post_id, score, num_comments):
@@ -231,7 +223,6 @@ def update_posts(post_id, score, num_comments):
 
 def insert_inventory(hash, post_id, vid_uuid):
     session = create_sqlalchemy_session()
-
     try:
         new_item = Inventory(
             videohash=hash,
@@ -248,3 +239,37 @@ def insert_inventory(hash, post_id, vid_uuid):
         logging.error(f"insert_inventory: Failed to insert new inventory item {post_id}. Error message: {e}")
     finally:
         session.close()
+
+
+def hash_inventory_check(hash):
+    session = create_sqlalchemy_session()
+    exists = False
+    with engine.connect() as connection:
+        try:
+            session = sqlalchemy.orm.Session(bind=connection)
+            query = session.query(Inventory.videohash).filter(Inventory.videohash.like(hash)).all()
+        except Exception as e:
+            session.rollback()
+            logging.error(f"hash_inventory_check: Failed to check video hash in inventory table")
+        finally:
+            session.close()
+    if len(query) > 0:
+        exists = True
+    return exists
+
+
+def id_inventory_check(post_id):
+    session = create_sqlalchemy_session()
+    exists = False
+    with engine.connect() as connection:
+        try:
+            session = sqlalchemy.orm.Session(bind=connection)
+            query = session.query(Inventory.post_id).filter(Inventory.post_id.like(post_id)).all()
+        except Exception as e:
+            session.rollback()
+            logging.error(f"id_inventory_check: Failed to check {post_id} in inventory table. Error message: {e}")
+        finally:
+            session.close()
+    if len(query) > 0:
+        exists = True
+    return exists

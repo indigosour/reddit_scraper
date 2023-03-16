@@ -1,10 +1,10 @@
 import os,time,praw,glob,logging,shutil
 from videohash import VideoHash
-from redvid import Downloader
 from datetime import datetime
 from database import *
 from peertube import *
 from common import *
+from reddit import *
 
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
@@ -13,14 +13,6 @@ logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(
 
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
-
-# Download video posts
-
-def download_video(url,path):
-    reddit = Downloader(max_q=True)
-    reddit.url = url
-    reddit.path = path
-    reddit.download()
 
 # Cleanup working directory of files and folders
 
@@ -40,19 +32,19 @@ def cleanup_workingdir():
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-def main_dl_period(sub,period,playlist_id):
+def main_dl_period(period,playlist_id):
     try:
         global working_dir
         # Get list of posts for download
-        dlList = get_dl_list_period(sub,period)
+        dlList = get_dl_list_period(period)
 
         # Run peertube auth to get token for this session
         peertube_auth()
 
-        logging.info(f'main_dl_period: Beginning main_dl_period creating playlist for {sub} and period {period}.')
+        logging.info(f'main_dl_period: Beginning main_dl_period creating playlist for period {period}.')
         
         # Download each video post
-        logging.info(f'main_dl_period: Downloading video posts for for {sub} and period {period}.')
+        logging.info(f'main_dl_period: Downloading video posts for period {period}.')
         
         if len(dlList) > 0:
             print(f"Downloading {len(dlList)} posts.")
@@ -62,7 +54,26 @@ def main_dl_period(sub,period,playlist_id):
                 
                 sani_title = cleanString(post['title'])
                 id = post['id']
+                sub = post['subreddit']
                 url = str(post['permalink'])
+                description = f"""
+                        Subreddit: {post['subreddit']}
+                        Author: {post['author']}
+                        Score: {post['score']}
+                        Upvote Ratio: {post['upvote_ratio']}
+                        Number of comments: {post['num_comments']}
+                        Date Created: {post['created_utc']}
+                        URL: {post['permalink']}
+                """
+                
+                # Check if the post ID exists in inventory table
+                id_check = id_inventory_check(post['id'])
+
+                if id_check == True:
+                    print("Already in downloaded table")
+                    continue
+                elif id_check == False:
+                    pass
 
                 # Download video and store in working directory
                 try:
@@ -70,7 +81,7 @@ def main_dl_period(sub,period,playlist_id):
                 except Exception as e:
                     print(f"Error downloading video: {e}")
                     logging.error(f"main_dl_period: Error downloading video: {e}")
-                    break
+                    continue
                 time.sleep(0.500)
 
                 working_file = glob.glob(f"{working_dir}/*.mp4")[0]
@@ -79,37 +90,49 @@ def main_dl_period(sub,period,playlist_id):
                 try:
                     v_hash = VideoHash(path=working_file)
                     hash_value = v_hash.hash
-                    binary_data = int(hash_value, 2).to_bytes((len(hash_value) - 2) // 8 + 1, 'big')
-                    logging.debug(f'get video hash: Video hash is {binary_data}')
-                except Exception as e:
+                    logging.debug(f'get video hash: Video hash is {hash_value}')
+                except (Exception,BaseException) as e:
                     print(f"Error generating video hash: {e}")
                     logging.error(f"main_dl_period: Error generating video hash: {e}")
-                    break
+                    continue
+
+                # Check if video hash exists
+                hash_check = hash_inventory_check(hash_value)
+
+                if hash_check == True:
+                    print("Duplicate video detected")
+                    os.remove(working_file)
+                    logging.info(f"Duplicate video detected and skipped. {post['id']}")
+                    continue
+                elif hash_check == False:
+                    pass
 
                 # Upload video to peertube
                 try:
-                    vid_uuid = upload_video(sub, sani_title, working_file)
+                    vid_uuid = upload_video(sub,sani_title,working_file,description)
                 except Exception as e:
                     print(f"Error uploading video: {e}")
                     logging.error(f"main_dl_period: Error uploading video: {e}")
-                    break
+                    continue
 
                 # Add video hash and path to database
                 try:
-                    insert_inventory(binary_data, id, vid_uuid)
-                    print(f'{sub} {binary_data} {id} {vid_uuid}')
+                    if vid_uuid != None:
+                        insert_inventory(hash_value, id, vid_uuid)
+                        logging.debug(f'{hash_value} {id} {vid_uuid}')
                 except Exception as e:
                     print(f"Error updating database: {e}")
                     logging.error("main_dl_period: Error updating database: {e}")
-                    break
+                    continue
 
                 # Add video to playlist p_id
                 try:
-                    add_video_playlist(vid_uuid, playlist_id)
+                    if vid_uuid != None:
+                        add_video_playlist(vid_uuid, playlist_id)
                 except Exception as e:
                     print(f"Error adding video to playlist: {e}")
                     logging.error(f'main_dl_period: Error adding video to playlist: {e}')
-                    break
+                    continue
                 
                 # Remove uploaded video
                 try:
@@ -123,25 +146,26 @@ def main_dl_period(sub,period,playlist_id):
             # Cleanup working directory
             cleanup_workingdir()
             logging.info("Cleaned up working directory")
-            logging.info(f'main_dl_period: Completed for {sub} and period {period}.')
+            logging.info(f'main_dl_period: Completed for period {period}.')
         else:
             print("No posts returned for download")
 
     except Exception as e:
         print(f"Error occurred: {e}")
+        cleanup_workingdir()
     except KeyboardInterrupt:
-        print('Interrupted')
+        cleanup_workingdir()
+        exit(1)
 
 
 def grab_dat(period):
-    sublist = load_sublist()
     today = datetime.today().strftime('%m-%d-%Y')
     peertube_auth()
     p_id = create_playlist(f'Top of the {period} for all subs as of {today}', 2)
-    for sub in sublist: 
-        main_dl_period(sub,period,p_id)
-        cleanup_workingdir()
-        print(f'Completed downloading {sub}')
+    main_dl_period(period,p_id)
+    cleanup_workingdir()
+    print(f'Completed downloading top of the {period} for all subs')
+    logging.info(f'Completed downloading top of the {period} for all subs')
 
 
 # def main():
