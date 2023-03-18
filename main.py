@@ -1,6 +1,7 @@
-import os,time,praw,glob,logging,shutil
+import os,time,glob,logging,shutil,uuid
 from videohash import VideoHash
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from database import *
 from peertube import *
 from common import *
@@ -16,11 +17,11 @@ working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
 # Cleanup working directory of files and folders
 
-def cleanup_workingdir():
-    working_folder_list = glob.glob(f"{working_dir}/*")
+def cleanup_workingdir(working_dir_run):
+    working_folder_list = glob.glob(f"{working_dir_run}/*")
     for i in working_folder_list:
         shutil.rmtree(i,True)
-    working_folder_list = glob.glob(f"{working_dir}/*")
+    working_folder_list = glob.glob(f"{working_dir_run}/*")
     for i in working_folder_list:
         os.remove(i)
     return print("Cleaned up working directory")
@@ -32,11 +33,13 @@ def cleanup_workingdir():
 
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
-def main_dl_period(period,playlist_id):
+def main_dl_period(period,playlist_id,dlList):
     try:
         global working_dir
-        # Get list of posts for download
-        dlList = get_dl_list_period(period)
+
+        # Create a unique working directory
+        working_dir_run = f"{working_dir}/working_{uuid.uuid4()}"
+        os.makedirs(working_dir_run)
 
         # Run peertube auth to get token for this session
         peertube_auth()
@@ -77,14 +80,14 @@ def main_dl_period(period,playlist_id):
 
                 # Download video and store in working directory
                 try:
-                    download_video(url, working_dir)
+                    download_video(url, working_dir_run)
                 except Exception as e:
                     print(f"Error downloading video: {e}")
                     logging.error(f"main_dl_period: Error downloading video: {e}")
                     continue
                 time.sleep(0.500)
 
-                working_file = glob.glob(f"{working_dir}/*.mp4")[0]
+                working_file = glob.glob(f"{working_dir_run}/*.mp4")[0]
 
                 # Generate video hash
                 try:
@@ -141,10 +144,15 @@ def main_dl_period(period,playlist_id):
                     print("Error removeing file: {e}")
                     logging.error(f'main_dl_period: Error removing file: {e}')
 
-            print("Completed downloading videos")
+            print("Completed downloading videos, cleaning up working directory...")
 
             # Cleanup working directory
-            cleanup_workingdir()
+            try:
+                shutil.rmtree(working_dir_run)
+                print(f"Successfully deleted the folder and its contents: {working_dir_run}")
+            except Exception as e:
+                print(f"Error deleting the folder and its contents: {e}")
+
             logging.info("Cleaned up working directory")
             logging.info(f'main_dl_period: Completed for period {period}.')
         else:
@@ -152,18 +160,37 @@ def main_dl_period(period,playlist_id):
 
     except Exception as e:
         print(f"Error occurred: {e}")
-        cleanup_workingdir()
+        cleanup_workingdir(working_dir)
     except KeyboardInterrupt:
-        cleanup_workingdir()
-        exit(1)
+        cleanup_workingdir(working_dir)
+        exit(0)
 
 
-def grab_dat(period):
+def grab_dat(period, batch_size=100):
     today = datetime.today().strftime('%m-%d-%Y')
     peertube_auth()
-    p_id = create_playlist(f'Top of the {period} for all subs as of {today}', 2)
-    main_dl_period(period,p_id)
-    cleanup_workingdir()
+    p_title = f'Top of the {period} for all subs as of {today}'
+
+    # Check if playlist exists
+    
+
+    p_id = create_playlist(p_title, 2)
+    dlList = get_dl_list_period(period)
+
+    print(f'Downloading {len(dlList)} posts from {period} for all subreddits.')
+
+
+    # Split dlList into batches
+    batches = [dlList[i:i + batch_size] for i in range(0, len(dlList), batch_size)]
+
+    # Run main_dl_period for each batch in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for batch in batches:
+            try:
+                executor.submit(main_dl_period, period, p_id, batch)
+            except KeyboardInterrupt:
+                exit(0)
+
     print(f'Completed downloading top of the {period} for all subs')
     logging.info(f'Completed downloading top of the {period} for all subs')
 
