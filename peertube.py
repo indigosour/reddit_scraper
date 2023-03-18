@@ -1,4 +1,5 @@
 import logging,requests,json,os,time
+from concurrent.futures import ThreadPoolExecutor
 from common import get_az_secret
 
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
@@ -42,6 +43,7 @@ def peertube_auth():
 
 def list_channels():
     global peertube_token
+    peertube_auth()
     headers = {
 	'Authorization': 'Bearer' + ' ' + peertube_token
     }
@@ -57,6 +59,37 @@ def list_channels():
         print(f"Response content: {res.content}")
         logging.error(f"list_channels: Error decoding JSON: {res.content} {e}")
     return channel_list
+
+
+def check_plist():
+    global peertube_token
+    peertube_auth()
+    headers = {
+	'Authorization': 'Bearer' + ' ' + peertube_token
+    }
+    params={'count': 100,'sort': '-createdAt'}
+    play_list = {}
+    channelHandle = 'autoupload'
+    res = requests.get(url=f'{peertube_api_url}/video-channels/{channelHandle}/video-playlists', headers=headers, params=params)
+
+    for i in res.json()['data']:
+        play_list['displayName'] = (i['displayName'])
+        play_list['uuid'] = (i['uuid'])
+
+    # try:
+    #     for i in res.json()['data']:
+    #         play_list['displayName'] = (i['displayName'])
+    #         play_list['uuid'] = (i['uuid'])
+    # except json.decoder.JSONDecodeError as e:
+    #     print(f"Error decoding JSON: {e}")
+    #     print(f"Response content: {res.content}")
+    #     logging.error(f"list_channels: Error decoding JSON: {res.content} {e}")
+
+    # for i in play_list:
+    #     if i['displayName'] == p_name:
+    #         p_uuid = 
+
+    return print(play_list)
 
 
 def upload_video(sub,title,video_path,description):
@@ -157,6 +190,7 @@ def list_videos(page):
 
     return video_list
 
+
 def delete_video(v_id):
     global peertube_token
     headers = {
@@ -174,9 +208,13 @@ def delete_all_videos():
     batch_size = 100
     peertube_auth()
 
+    def delete_video_thread(v_id):
+        delete_video(v_id)
+
     def delete_batch(batch):
-        for v_id in batch:
-            delete_video(v_id)
+        with ThreadPoolExecutor() as executor:
+            for v_id in batch:
+                executor.submit(delete_video_thread, v_id)
 
     # Set the initial page number to 1
     page = 1
