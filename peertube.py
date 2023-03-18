@@ -209,10 +209,20 @@ def delete_all_videos():
     peertube_auth()
 
     def delete_video_thread(v_id):
-        delete_video(v_id)
+        while True:
+            try:
+                delete_video(v_id)
+                break
+            except Exception as e:
+                if 'Too many requests' in str(e):
+                    print("Too many requests, waiting for 60 seconds...")
+                    time.sleep(60)
+                else:
+                    print(f"Error deleting video {v_id}: {e}")
+                    break
 
     def delete_batch(batch):
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             for v_id in batch:
                 executor.submit(delete_video_thread, v_id)
 

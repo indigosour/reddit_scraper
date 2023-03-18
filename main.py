@@ -171,14 +171,13 @@ def grab_dat(period, batch_size=100):
     peertube_auth()
     p_title = f'Top of the {period} for all subs as of {today}'
 
-    # Check if playlist exists
-    
+    # TO DO -
+    # Check if playlist exists, if it exists then pass existing p_id
 
     p_id = create_playlist(p_title, 2)
     dlList = get_dl_list_period(period)
 
     print(f'Downloading {len(dlList)} posts from {period} for all subreddits.')
-
 
     # Split dlList into batches
     batches = [dlList[i:i + batch_size] for i in range(0, len(dlList), batch_size)]
