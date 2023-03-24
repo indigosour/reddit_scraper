@@ -34,6 +34,8 @@ def cleanup_workingdir(working_dir_run):
 # Download by period of time = Input subreddit and period of time to create working directory and collect mp4 files
 
 def main_dl_period(period,playlist_id,dlList):
+    upload_count = 0
+    post_count = len(dlList)
     try:
         global working_dir
 
@@ -50,7 +52,7 @@ def main_dl_period(period,playlist_id,dlList):
         logging.info(f'main_dl_period: Downloading video posts for period {period}.')
         
         if len(dlList) > 0:
-            print(f"Downloading {len(dlList)} posts.")
+            print(f"Downloading {post_count} posts.")
 
             for post in dlList:
                 logging.debug(post['permalink'])
@@ -103,9 +105,9 @@ def main_dl_period(period,playlist_id,dlList):
                 hash_check = hash_inventory_check(hash_value)
 
                 if hash_check == True:
-                    print("Duplicate video detected")
+                    print(f"main_dl_period: Duplicate video detected and skipped. {post['id']}")
                     os.remove(working_file)
-                    logging.info(f"Duplicate video detected and skipped. {post['id']}")
+                    logging.info(f"main_dl_period: Duplicate video detected and skipped. {post['id']}")
                     continue
                 elif hash_check == False:
                     pass
@@ -114,7 +116,7 @@ def main_dl_period(period,playlist_id,dlList):
                 try:
                     vid_uuid = upload_video(sub,sani_title,working_file,description)
                 except Exception as e:
-                    print(f"Error uploading video: {e}")
+                    print(f"main_dl_period: Error uploading video: {e}")
                     logging.error(f"main_dl_period: Error uploading video: {e}")
                     continue
 
@@ -124,27 +126,29 @@ def main_dl_period(period,playlist_id,dlList):
                         insert_inventory(hash_value, id, vid_uuid)
                         logging.debug(f'{hash_value} {id} {vid_uuid}')
                 except Exception as e:
-                    print(f"Error updating database: {e}")
-                    logging.error("main_dl_period: Error updating database: {e}")
+                    print(f"Error updating database with video hash: {e}")
+                    logging.error("main_dl_period: Error updating database with video hash: {e}")
                     continue
 
                 # Add video to playlist p_id
                 try:
                     if vid_uuid != None:
                         add_video_playlist(vid_uuid, playlist_id)
+                        upload_count += 1
                 except Exception as e:
-                    print(f"Error adding video to playlist: {e}")
-                    logging.error(f'main_dl_period: Error adding video to playlist: {e}')
+                    print(f'main_dl_period: Error adding video to peertube playlist {playlist_id}: {e}')
+                    logging.error(f'main_dl_period: Error adding video to peertube playlist {playlist_id}: {e}')
                     continue
                 
                 # Remove uploaded video
                 try:
                     os.remove(working_file)
                 except Exception as e:
-                    print("Error removeing file: {e}")
-                    logging.error(f'main_dl_period: Error removing file: {e}')
+                    print(f'main_dl_period: Error removing file {working_file}: {e}')
+                    logging.error(f'main_dl_period: Error removing file {working_file}: {e}')
 
-            print("Completed downloading videos, cleaning up working directory...")
+            print(f"Completed downloading videos, {upload_count}/{post_count} uploaded successfully. \nCleaning up working directory...")
+            logging.info(f"main_dl_period: Completed downloading videos, {upload_count}/{post_count} uploaded successfully. \nCleaning up working directory...")
 
             # Cleanup working directory
             try:
@@ -167,6 +171,7 @@ def main_dl_period(period,playlist_id,dlList):
 
 
 def grab_dat(period, batch_size=100):
+    processed_posts = 0
     today = datetime.today().strftime('%m-%d-%Y')
     peertube_auth()
     p_title = f'Top of the {period} for all subs as of {today}'
@@ -178,6 +183,7 @@ def grab_dat(period, batch_size=100):
     dlList = get_dl_list_period(period)
 
     print(f'Downloading {len(dlList)} posts from {period} for all subreddits.')
+    total_posts = len(dlList)
 
     # Split dlList into batches
     batches = [dlList[i:i + batch_size] for i in range(0, len(dlList), batch_size)]
@@ -190,8 +196,8 @@ def grab_dat(period, batch_size=100):
             except KeyboardInterrupt:
                 exit(0)
 
-    print(f'Completed downloading top of the {period} for all subs')
-    logging.info(f'Completed downloading top of the {period} for all subs')
+    print(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
+    logging.info(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
 
 
 # def main():
