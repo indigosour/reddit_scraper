@@ -2,8 +2,10 @@ from sqlalchemy import create_engine,Column,Integer,String,Boolean,DateTime,DECI
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy.orm
 from sqlalchemy.exc import IntegrityError, DataError, SQLAlchemyError
-import logging,datetime,threading,random,prawcore
+import logging,datetime
 from datetime import timedelta, datetime
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from common import *
 from reddit import *
 
@@ -64,14 +66,13 @@ def drop_table():
 
 def process_subreddit_update():
     sublist = load_sublist()
-    threads = []
-    for sub in sublist:
-        thread = threading.Thread(target=store_reddit_posts, args=(sub,))
-        threads.append(thread)
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(store_reddit_posts, sub) for sub in sublist]
+
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+
     print("Completed updating database with all posts from all tracked subreddits")
 
 
@@ -156,7 +157,7 @@ def get_dl_list_period(period):
     else:
         print("Invalid period")
 
-    logging.info(f"get_dl_list_period: Period calculated \nStart Date: {start_date} and End Date: {end_date}")
+    logging.debug(f"get_dl_list_period: Period calculated \nStart Date: {start_date} and End Date: {end_date}")
 
     try:
         with engine.connect() as connection:
@@ -164,6 +165,7 @@ def get_dl_list_period(period):
             query = session.query(Post.title, Post.post_id, Post.permalink, Post.author, Post.permalink,
                                     Post.score, Post.upvote_ratio, Post.num_comments, Post.created_utc, Post.subreddit).filter(
                 Post.created_utc.between(start_date, end_date), Post.score > 500).all()
+            logging.debug(f"get_dl_list_period: Query - {query}")
             dl_list = [{"title": row.title, 
                         "subreddit": row.subreddit,
                         "id": row.post_id, 
@@ -248,9 +250,10 @@ def hash_inventory_check(hash):
         try:
             session = sqlalchemy.orm.Session(bind=connection)
             query = session.query(Inventory.videohash).filter(Inventory.videohash.like(hash)).all()
+            logging.debug(f"hash_inventory_check: Query - {query}")
         except Exception as e:
             session.rollback()
-            logging.error(f"hash_inventory_check: Failed to check video hash in inventory table")
+            logging.error(f"hash_inventory_check: Failed to check video hash in inventory table. {query}")
         finally:
             session.close()
     if len(query) > 0:
@@ -265,9 +268,10 @@ def id_inventory_check(post_id):
         try:
             session = sqlalchemy.orm.Session(bind=connection)
             query = session.query(Inventory.post_id).filter(Inventory.post_id.like(post_id)).all()
+            logging.debug(f"id_inventory_check: Query - {query}")
         except Exception as e:
             session.rollback()
-            logging.error(f"id_inventory_check: Failed to check {post_id} in inventory table. Error message: {e}")
+            logging.error(f"id_inventory_check: Failed to check {post_id} in inventory table. Query: {query} Error message: {e}")
         finally:
             session.close()
     if len(query) > 0:
