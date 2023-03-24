@@ -16,9 +16,13 @@ Base = sqlalchemy.orm.declarative_base()
 engine = create_engine(database_url)
 
 def create_sqlalchemy_session():
-    engine = create_engine(database_url)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    try:
+        engine = create_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+    except Exception as e:
+        print("Error creating sql session",e)
+        logging.error("Error creating sql session")
     return session
 
 
@@ -230,6 +234,7 @@ def insert_inventory(hash, post_id, vid_uuid):
             videohash=hash,
             post_id=post_id,
             stored=True,
+            watched=False,
             tube_id=vid_uuid,
             last_updated=datetime.now()
         )
@@ -263,17 +268,15 @@ def hash_inventory_check(hash):
 
 def id_inventory_check(post_id):
     session = create_sqlalchemy_session()
-    exists = False
     with engine.connect() as connection:
         try:
             session = sqlalchemy.orm.Session(bind=connection)
-            query = session.query(Inventory.post_id).filter(Inventory.post_id.like(post_id)).all()
+            query = session.query(Inventory.post_id,Inventory.tube_id,Inventory.watched).filter(Inventory.post_id.like(post_id)).all()
+            print(query)
             logging.debug(f"id_inventory_check: Query - {query}")
         except Exception as e:
             session.rollback()
             logging.error(f"id_inventory_check: Failed to check {post_id} in inventory table. Query: {query} Error message: {e}")
         finally:
             session.close()
-    if len(query) > 0:
-        exists = True
-    return exists
+    return query

@@ -7,11 +7,9 @@ from peertube import *
 from common import *
 from reddit import *
 
-
-logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
-
 # Variables and config
-
+logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
+logging.getLogger('PIL').setLevel(logging.WARNING)
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
 
@@ -19,12 +17,27 @@ working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
 
 def cleanup_workingdir(working_dir_run):
     working_folder_list = glob.glob(f"{working_dir_run}/*")
-    for i in working_folder_list:
-        shutil.rmtree(i,True)
-    working_folder_list = glob.glob(f"{working_dir_run}/*")
-    for i in working_folder_list:
-        os.remove(i)
+    for f in working_folder_list:
+        try:
+            if os.path.isfile(f):
+                os.remove(f)
+            elif os.path.isdir(f):
+                shutil.rmtree(f)
+        except OSError as e:
+            print(f"Error: {e.filename} - {e.strerror}")
     return print("Cleaned up working directory")
+
+
+def clear_tmp_folder():
+    files = glob.glob('/tmp/tmp*')
+    for f in files:
+        try:
+            if os.path.isfile(f):
+                os.remove(f)
+            elif os.path.isdir(f):
+                shutil.rmtree(f)
+        except OSError as e:
+            print(f"Error: {e.filename} - {e.strerror}")
 
 
 ###########################
@@ -63,21 +76,26 @@ def main_dl_period(period,playlist_id,dlList):
                 url = str(post['permalink'])
                 description = f"""
                         Subreddit: {post['subreddit']}
-                        Author: {post['author']}
                         Score: {post['score']}
+                        URL: {post['permalink']}                        
+                        Author: {post['author']}
                         Upvote Ratio: {post['upvote_ratio']}
                         Number of comments: {post['num_comments']}
                         Date Created: {post['created_utc']}
-                        URL: {post['permalink']}
+
                 """
                 
                 # Check if the post ID exists in inventory table
+                #### If it does exist and has not been watched, then add it to the new playlist
                 id_check = id_inventory_check(post['id'])
 
-                if id_check == True:
+                if len(id_check) > 0:
                     print("Already in downloaded table")
+                    if id_check[0][2] == False:
+                        v_found_id = id_check[0][1]
+                        add_video_playlist(v_found_id, playlist_id)
                     continue
-                elif id_check == False:
+                elif len(id_check) == 0:
                     pass
 
                 # Download video and store in working directory
@@ -101,7 +119,7 @@ def main_dl_period(period,playlist_id,dlList):
                     logging.error(f"main_dl_period: Error generating video hash: {e}")
                     continue
 
-                # Check if video hash exists
+                # Dedupe - Check if video hash exists
                 hash_check = hash_inventory_check(hash_value)
 
                 if hash_check == True:
@@ -152,21 +170,21 @@ def main_dl_period(period,playlist_id,dlList):
 
             # Cleanup working directory
             try:
-                shutil.rmtree(working_dir_run)
+                cleanup_workingdir(working_dir_run)
                 print(f"Successfully deleted the folder and its contents: {working_dir_run}")
             except Exception as e:
                 print(f"Error deleting the folder and its contents: {e}")
 
-            logging.info("Cleaned up working directory")
+            logging.info("main_dl_period: Cleaned up working directory")
             logging.info(f'main_dl_period: Completed for period {period}.')
         else:
             print("No posts returned for download")
 
     except Exception as e:
         print(f"Error occurred: {e}")
-        cleanup_workingdir(working_dir)
+        cleanup_workingdir(working_dir_run)
     except KeyboardInterrupt:
-        cleanup_workingdir(working_dir)
+        cleanup_workingdir(working_dir_run)
         exit(0)
 
 
@@ -193,6 +211,7 @@ def grab_dat(period, batch_size=100):
         for batch in batches:
             try:
                 executor.submit(main_dl_period, period, p_id, batch)
+                clear_tmp_folder()
             except KeyboardInterrupt:
                 exit(0)
 

@@ -2,8 +2,6 @@ import logging,requests,json,os,time
 from concurrent.futures import ThreadPoolExecutor
 from common import get_az_secret
 
-logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.DEBUG)
-
 # Variables
 peertube_api_url = get_az_secret("TUBE-CRED")['url']
 peertube_token = None
@@ -175,7 +173,6 @@ def list_videos(page):
     params = {'count': 100, 'sort': '-createdAt', 'page': page}
     video_list = []
     res = requests.get(url=f'{peertube_api_url}/videos', headers=headers, params=params)
-
     try:
         data = res.json()['data']
         for i in data:
@@ -184,11 +181,17 @@ def list_videos(page):
         print(f"Error decoding JSON: {e}")
         print(f"Response content: {res.content}")
         logging.error(f"list_channels: Error decoding JSON: {res.content} {e}")
-    
     # Add delay to avoid "too many requests" error
     time.sleep(1)
-
     return video_list
+
+# Check video views by ID and return number of views
+
+def get_video_views(v_id):
+    global peertube_token
+
+
+    return views
 
 
 def delete_video(v_id):
