@@ -176,9 +176,9 @@ def get_dl_list_period(period):
                         "author": row.author,
                         "permalink": row.permalink, 
                         "score": row.score,
-                        "upvote_ratio": row.upvote_ratio,
+                        "upvote_ratio": float(row.upvote_ratio),
                         "num_comments": row.num_comments,
-                        "created_utc": row.created_utc,
+                        "created_utc": str(row.created_utc),
                         } for row in query]
             return dl_list
         
@@ -272,7 +272,6 @@ def id_inventory_check(post_id):
         try:
             session = sqlalchemy.orm.Session(bind=connection)
             query = session.query(Inventory.post_id,Inventory.tube_id,Inventory.watched).filter(Inventory.post_id.like(post_id)).all()
-            print(query)
             logging.debug(f"id_inventory_check: Query - {query}")
         except Exception as e:
             session.rollback()

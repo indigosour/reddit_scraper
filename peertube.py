@@ -187,11 +187,11 @@ def list_videos(page):
 
 # Check video views by ID and return number of views
 
-def get_video_views(v_id):
-    global peertube_token
+# def get_video_views(v_id):
+#     global peertube_token
 
 
-    return views
+#     return views
 
 
 def delete_video(v_id):

@@ -1,35 +1,60 @@
-import pika
-from main import grab_dat
-from database import process_subreddit_update
+import json,pika,time
+from common import *
+from threading import Timer
 
-# Define callback function to process received messages
-def callback(ch, method, properties, body):
-    message = body.decode()
-    print(f"Received message: {message}")
-
-    if message == "":
-        grab_dat()
-    elif message == "process_subreddit_update":
-        process_subreddit_update()
-    else:
-        print(f"Unknown message: {message}")
-
-# Connection and channel creation
-connection_params = pika.ConnectionParameters(host='172.19.0.2')
-connection = pika.BlockingConnection(connection_params)
+# Set up RabbitMQ connection and channel
+mq_cred = pika.PlainCredentials(get_az_secret('RMQ-CRED')['username'], get_az_secret('RMQ-CRED')['password'])
+connection = pika.BlockingConnection(pika.ConnectionParameters(host=f"{get_az_secret('RMQ-CRED')['url']}", credentials=mq_cred))
 channel = connection.channel()
 
-# Declare the queue (if it doesn't exist, it will be created)
-queue_name = 'work'
-channel.queue_declare(queue=queue_name)
+# Declare the durable queue (create if not exists)
+queue_name = "work"
+channel.queue_declare(queue=queue_name, durable=True)
 
-# Bind the callback function to the queue and start consuming messages
-channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+# Counter to keep track of the number of messages received
+message_buffer = []
+buffer_max_size = 5
+buffer_timeout = 5  # seconds
 
-print('Waiting for messages...')
-try:
-    channel.start_consuming()
-except KeyboardInterrupt:
-    print('Interrupted, stopping...')
-    channel.stop_consuming()
-    connection.close()
+def process_messages(messages):
+    message_count = 0
+    for message in messages:
+        message_count += 1
+        time.sleep(5)
+        print(f"Processed: {message_count}")
+
+def flush_buffer():
+    global message_buffer
+    if message_buffer:
+        process_messages(message_buffer)
+        message_buffer = []
+
+def on_buffer_timeout():
+    flush_buffer()
+
+timer = Timer(buffer_timeout, on_buffer_timeout)
+
+# Define a callback function to handle incoming messages
+def on_message(channel, method, properties, body):
+    global message_buffer, timer
+    message = json.loads(body)
+    print(f"Received: a message")
+    channel.basic_ack(delivery_tag=method.delivery_tag)
+
+    message_buffer.append(message)
+
+    if not timer.is_alive():
+        timer.cancel()
+        timer = Timer(buffer_timeout, on_buffer_timeout)
+        timer.start()
+
+    if len(message_buffer) >= buffer_max_size:
+        flush_buffer()
+        timer.cancel()
+
+# Start consuming messages from the queue
+channel.basic_qos(prefetch_count=5)
+channel.basic_consume(queue=queue_name, on_message_callback=on_message)
+
+print("Waiting for messages. Press CTRL+C to exit.")
+channel.start_consuming()

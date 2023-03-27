@@ -1,4 +1,4 @@
-import os,json,emoji,re,logging,praw
+import os,json,emoji,re,logging,praw,shutil,glob
 from azure.keyvault.secrets import SecretClient
 from azure.identity import ClientSecretCredential
 
@@ -52,3 +52,30 @@ def reddit_auth():
         return reddit
     except Exception as e:
         print("Exception caught",e)
+
+
+# Cleanup working directory of files and folders
+
+def cleanup_workingdir(working_dir_run):
+    working_folder_list = glob.glob(f"{working_dir_run}/*")
+    for f in working_folder_list:
+        try:
+            if os.path.isfile(f):
+                os.remove(f)
+            elif os.path.isdir(f):
+                shutil.rmtree(f)
+        except OSError as e:
+            print(f"Error: {e.filename} - {e.strerror}")
+    return print("Cleaned up working directory")
+
+
+def clear_tmp_folder():
+    files = glob.glob('/tmp/tmp*')
+    for f in files:
+        try:
+            if os.path.isfile(f):
+                os.remove(f)
+            elif os.path.isdir(f):
+                shutil.rmtree(f)
+        except OSError as e:
+            print(f"Error: {e.filename} - {e.strerror}")

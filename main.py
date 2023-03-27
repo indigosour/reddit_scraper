@@ -1,4 +1,4 @@
-import os,time,glob,logging,shutil,uuid
+import os,time,glob,logging,uuid
 from videohash import VideoHash
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -11,33 +11,6 @@ from reddit import *
 logging.basicConfig(filename='log.log', encoding='utf-8', format='%(asctime)s %(message)s', level=logging.INFO)
 logging.getLogger('PIL').setLevel(logging.WARNING)
 working_dir = (os.path.dirname(os.path.realpath(__file__))) + "/working"
-
-
-# Cleanup working directory of files and folders
-
-def cleanup_workingdir(working_dir_run):
-    working_folder_list = glob.glob(f"{working_dir_run}/*")
-    for f in working_folder_list:
-        try:
-            if os.path.isfile(f):
-                os.remove(f)
-            elif os.path.isdir(f):
-                shutil.rmtree(f)
-        except OSError as e:
-            print(f"Error: {e.filename} - {e.strerror}")
-    return print("Cleaned up working directory")
-
-
-def clear_tmp_folder():
-    files = glob.glob('/tmp/tmp*')
-    for f in files:
-        try:
-            if os.path.isfile(f):
-                os.remove(f)
-            elif os.path.isdir(f):
-                shutil.rmtree(f)
-        except OSError as e:
-            print(f"Error: {e.filename} - {e.strerror}")
 
 
 ###########################
@@ -87,6 +60,7 @@ def main_dl_period(period,playlist_id,dlList):
                 
                 # Check if the post ID exists in inventory table
                 #### If it does exist and has not been watched, then add it to the new playlist
+
                 id_check = id_inventory_check(post['id'])
 
                 if len(id_check) > 0:
@@ -95,7 +69,7 @@ def main_dl_period(period,playlist_id,dlList):
                         v_found_id = id_check[0][1]
                         add_video_playlist(v_found_id, playlist_id)
                     continue
-                elif len(id_check) == 0:
+                elif id_check == None:
                     pass
 
                 # Download video and store in working directory
@@ -217,118 +191,3 @@ def grab_dat(period, batch_size=100):
 
     print(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
     logging.info(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
-
-
-# def main():
-#     sublist = load_sublist()
-#     choicelist = {}
-#     today = datetime.today().strftime('%m-%d-%Y')
-#     while True:
-#         print("Welcome to Reddit Scraper! \nPlease select an option below:")
-#         print("1. Gather a specific subreddit for a period. (Eg. week, month, etc.)")
-#         print("2. Gather all subreddits for a specific period. (Eg. week, month, etc.)")
-#         print("3. Update the databases with the latest posts.")
-#         print("4. Exit the program")
-
-#         choice = input("Enter your choice: ")
-
-#         if choice == "1":
-#             num = 1
-#             print("You selected option 1.")
-#             print("For which period would you like to download? \nPlease select an option below: ")
-#             print("1. Top of the last Day")
-#             print('2. Top of the last Week')
-#             print('3. Top of the last Month')
-#             print('4. Top of the last Year')
-            
-#             choice_period = input("Enter your choice: ")
-            
-#             if choice_period == '1':
-#                 print("You've chosen day.")
-#                 chosen_period = 'day'
-#             if choice_period == '2':
-#                 print("You've chosen week.")
-#                 chosen_period = 'week'
-#             if choice_period == '3':
-#                 print("You've chosen month.")
-#                 chosen_period = 'month'
-#             if choice_period == '4':
-#                 print("You've chosen year.")
-#                 chosen_period = 'year'
-
-#             choicelist = {
-#                     'num': 'sub' 
-#                 }
-#             print(f"Download the top of {chosen_period} for which subreddit? \nSelect an option below: ")
-
-#             for sub in sublist:
-#                 print(f'Choice {num}: {sub}')
-#                 choicelist[f'{num}']=sub
-#                 num = num + 1
-            
-#             choice_sub = input("Enter your choice: ")
-            
-#             chosen_sub = choicelist[choice_sub]
-
-#             if chosen_sub is None:
-#                 print("Invalid choice")  
-#             elif True:
-#                 print(f'You\'ve chosen option {choice_sub}: {chosen_sub}')
-#             print(f"Now gathering and downloading posts from {chosen_sub}...")
-            
-#             try:
-#                 p_id = create_playlist(f'{chosen_sub} top of the {chosen_period} - Generated {today}', chosen_sub)
-#                 main_dl_period(chosen_sub,chosen_period,p_id)
-#             except KeyboardInterrupt:
-#                 print("KeyboardInterrupted!")
-#                 break
-
-#         elif choice == "2":
-#             print("You selected option 2. Download all subreddits for a specific period of time.")
-#             print("For which period would you like to download? \nPlease select an option below: ")
-#             print("1. Top of the last Day")
-#             print('2. Top of the last Week')
-#             print('3. Top of the last Month')
-#             print('4. Top of the last Year')
-            
-#             choice_period = input("Enter your choice: ")
-            
-#             if choice_period == '1':
-#                 print("You've chosen day.")
-#                 chosen_period = 'day'
-#             if choice_period == '2':
-#                 print("You've chosen week.")
-#                 chosen_period = 'week'
-#             if choice_period == '3':
-#                 print("You've chosen month.")
-#                 chosen_period = 'month'
-#             if choice_period == '4':
-#                 print("You've chosen year.")
-#                 chosen_period = 'year'
-    
-#             try:
-#                 grab_dat(chosen_period)
-#             except KeyboardInterrupt:
-#                 print("KeyboardInterrupted!")
-#                 break
-
-#         elif choice == "3":
-#             print("You selected option 3. \nBeginning db update now...")
-#             try:
-#                 update_DB()
-#             except Exception as e:
-#                 print("Error updating the DB: %s" % e)
-#             except KeyboardInterrupt:
-#                 print("KeyboardInterrupt!")
-#                 break
-
-#         elif choice == "4":
-
-#             print("Exiting...")
-#             break
-
-#         else:
-#             print("Invalid choice. Please try again.")
-
-# if __name__ == "__main__":
-#     main()
