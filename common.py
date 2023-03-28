@@ -31,6 +31,7 @@ def get_az_secret(key_name):
         az_tenant_id = os.getenv('AZURE_TENANT_ID')
         az_client_id = os.getenv('AZURE_CLIENT_ID')
         az_client_secret = os.getenv('AZURE_CLIENT_SECRET')
+        print(az_tenant_id, az_client_id, az_client_secret)
 
         az_credential = ClientSecretCredential(az_tenant_id, az_client_id, az_client_secret)
         vault_url = os.getenv('AZURE_VAULT_URL')
