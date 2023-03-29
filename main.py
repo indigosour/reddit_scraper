@@ -31,8 +31,6 @@ def main_dl_period(period,playlist_id,dlList):
 
         # Run peertube auth to get token for this session
         peertube_auth()
-
-        logging.info(f'main_dl_period: Beginning main_dl_period creating playlist for period {period}.')
         
         # Download each video post
         logging.info(f'main_dl_period: Downloading video posts for period {period}.')

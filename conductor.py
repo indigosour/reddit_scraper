@@ -28,9 +28,13 @@ def send_message_work(dlBatch):
     connection.close()
 
 
+import json  # Make sure to import the json module at the beginning of your file
+
 def queue_dl_period(period, batch_size=100):
-    # today = datetime.today().strftime('%m-%d-%Y')
-    # peertube_auth()
+    today = datetime.today().strftime('%m-%d-%Y')
+    peertube_auth()
+    p_title = f'Top of the {period} for all subs as of {today}'
+    p_id = create_playlist(p_title, 2)
 
     dlList = get_dl_list_period(period)
 
@@ -40,6 +44,9 @@ def queue_dl_period(period, batch_size=100):
     batches = [dlList[i:i + batch_size] for i in range(0, len(dlList), batch_size)]
 
     for batch in batches:
-        send_message_work(batch)
+        json_batch = json.dumps(batch)
+        first_part = f'{{"p_id": "{p_id}", "period": "{period}"}}'
+        b = f'{first_part} | {json_batch}'
+        send_message_work(b)
 
     print(f'Sent {len(batches)} messages to worker queue.')

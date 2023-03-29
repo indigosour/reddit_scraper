@@ -1,60 +1,48 @@
-import json,pika,time
+import json, pika, time, ast
 from common import *
-from threading import Timer
+from main import *
 
 # Set up RabbitMQ connection and channel
 mq_cred = pika.PlainCredentials(get_az_secret('RMQ-CRED')['username'], get_az_secret('RMQ-CRED')['password'])
-connection = pika.BlockingConnection(pika.ConnectionParameters(host=f"{get_az_secret('RMQ-CRED')['url']}", credentials=mq_cred))
+connection = pika.BlockingConnection(pika.ConnectionParameters(host=get_az_secret('RMQ-CRED')['url'], credentials=mq_cred))
 channel = connection.channel()
 
 # Declare the durable queue (create if not exists)
 queue_name = "work"
 channel.queue_declare(queue=queue_name, durable=True)
 
-# Counter to keep track of the number of messages received
-message_buffer = []
-buffer_max_size = 5
-buffer_timeout = 5  # seconds
 
-def process_messages(messages):
-    message_count = 0
-    for message in messages:
-        message_count += 1
-        time.sleep(5)
-        print(f"Processed: {message_count}")
+def process_message(period,p_id,batch):
+    main_dl_period(period,p_id,batch)
+    clear_tmp_folder()
+    print(f"Completed processing batch")
 
-def flush_buffer():
-    global message_buffer
-    if message_buffer:
-        process_messages(message_buffer)
-        message_buffer = []
-
-def on_buffer_timeout():
-    flush_buffer()
-
-timer = Timer(buffer_timeout, on_buffer_timeout)
 
 # Define a callback function to handle incoming messages
 def on_message(channel, method, properties, body):
-    global message_buffer, timer
-    message = json.loads(body)
+    print(body)
+    body_str = body.decode('utf-8')  # Decode the bytes object to a string
+    parts = body_str.split("|")
+    before_pipe = ast.literal_eval(parts[0].strip())
+    after_pipe = parts[1].strip()
+    p_id = before_pipe['p_id']
+    period = before_pipe['period']
+    json_batch = json.loads(after_pipe)
     print(f"Received: a message")
+    process_message(period, p_id, json_batch)
     channel.basic_ack(delivery_tag=method.delivery_tag)
-
-    message_buffer.append(message)
-
-    if not timer.is_alive():
-        timer.cancel()
-        timer = Timer(buffer_timeout, on_buffer_timeout)
-        timer.start()
-
-    if len(message_buffer) >= buffer_max_size:
-        flush_buffer()
-        timer.cancel()
 
 # Start consuming messages from the queue
 channel.basic_qos(prefetch_count=5)
 channel.basic_consume(queue=queue_name, on_message_callback=on_message)
 
 print("Waiting for messages. Press CTRL+C to exit.")
-channel.start_consuming()
+
+try:
+    channel.start_consuming()
+except (KeyboardInterrupt, Exception) as e:
+    print(e)
+    print("Exiting gracefully...")
+finally:
+    channel.stop_consuming()
+    connection.close()
