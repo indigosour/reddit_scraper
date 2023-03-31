@@ -42,11 +42,14 @@ def get_reddit_posts(sub, period):
 
 # Download video posts
 
-def download_video(url,path):
+def download_video(url, path):
     try:
         reddit = Downloader(max_q=True)
         reddit.url = url
         reddit.path = path
         reddit.download()
-    except Exception as e:
-        raise
+    except BaseException as e:
+        if str(e) == 'No video in this post':
+            print("No video found in this post. Skipping...")
+        else:
+            raise

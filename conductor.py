@@ -1,10 +1,9 @@
 import json,pika,datetime
-from decimal import Decimal
 from common import *
 from peertube import *
 from database import *
 
-def send_message_work(dlBatch):
+def send_message_work(dlBatch, metadata):
 
     # Set up RabbitMQ connection and channel
     mq_cred = pika.PlainCredentials(get_az_secret('RMQ-CRED')['username'],get_az_secret('RMQ-CRED')['password'])
@@ -15,13 +14,16 @@ def send_message_work(dlBatch):
     queue_name = "work"
     channel.queue_declare(queue=queue_name, durable=True)
 
-    # Send messages to the queue with message persistence
+    # Send messages to the queue with message persistence and metadata
     message = json.dumps(dlBatch)
     channel.basic_publish(
         exchange="",
         routing_key=queue_name,
         body=message,
-        properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+        properties=pika.BasicProperties(
+            delivery_mode=2,  # Make message persistent
+            headers=metadata  # Add metadata as headers
+        )
     )
 
     # Close the connection
@@ -44,9 +46,13 @@ def queue_dl_period(period, batch_size=100):
     batches = [dlList[i:i + batch_size] for i in range(0, len(dlList), batch_size)]
 
     for batch in batches:
-        json_batch = json.dumps(batch)
-        first_part = f'{{"p_id": "{p_id}", "period": "{period}"}}'
-        b = f'{first_part} | {json_batch}'
-        send_message_work(b)
+        metadata = {
+            "content_type": "application/json",
+            "job_type": "dl_period",
+            "period": period,
+            "p_id": p_id,
+            "version": "1.0"
+        }
+        send_message_work(batch,metadata)
 
     print(f'Sent {len(batches)} messages to worker queue.')
