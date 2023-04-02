@@ -1,4 +1,4 @@
-import os,time,glob,logging,uuid
+import os,time,glob,logging,uuid,argparse
 from videohash import VideoHash
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -189,3 +189,30 @@ def grab_dat(period, batch_size=100):
 
     print(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
     logging.info(f'Completed downloading top of the {period} for all subs. \nCompleted {processed_posts}/{total_posts}')
+
+
+def process_subreddit_update():
+    sublist = load_sublist()
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(store_reddit_posts, sub) for sub in sublist]
+
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+
+    print("Completed updating database with all posts from all tracked subreddits")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run grab_dat or process_subreddit_update from command line")
+    parser.add_argument("-g", "--grab_dat", type=str, help="Period to grab the top posts (hour, day, week, month, year, all)")
+    parser.add_argument("-p", "--process_subreddit_update", action="store_true", help="Process subreddit update")
+
+    args = parser.parse_args()
+
+    if args.grab_dat:
+        grab_dat(args.grab_dat)
+    elif args.process_subreddit_update:
+        process_subreddit_update()
+    else:
+        print("Please provide an argument: --grab_dat or --process_subreddit_update")
