@@ -68,18 +68,6 @@ def drop_table():
     Base.metadata.drop_all(engine)
 
 
-def process_subreddit_update():
-    sublist = load_sublist()
-
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(store_reddit_posts, sub) for sub in sublist]
-
-        for future in concurrent.futures.as_completed(futures):
-            future.result()
-
-    print("Completed updating database with all posts from all tracked subreddits")
-
-
 def store_reddit_posts(sub):
     session = create_sqlalchemy_session()
     logging.info(f"store_reddit_posts: Storing reddit posts...")
@@ -189,42 +177,42 @@ def get_dl_list_period(period):
         session.close()
 
 
-def update_posts(post_id, score, num_comments):
-    session = create_sqlalchemy_session()
+# def update_posts(post_id, score, num_comments):
+#     session = create_sqlalchemy_session()
 
-    for submission in posts:
-        if submission.author != None and submission.is_video == True:
-            post = Post(
-                post_id=submission.id,
-                title=cleanString(submission.title)[:500],
-                author=submission.author.name,
-                subreddit=submission.subreddit,
-                score=submission.score,
-                upvote_ratio=submission.upvote_ratio,
-                num_comments=submission.num_comments,
-                created_utc=datetime.fromtimestamp(int(submission.created_utc)),
-                is_original_content=submission.is_original_content,
-                over_18=submission.over_18,
-                permalink="https://reddit.com" + submission.permalink,
-                last_updated=datetime.now()
-            )
+#     for submission in posts:
+#         if submission.author != None and submission.is_video == True:
+#             post = Post(
+#                 post_id=submission.id,
+#                 title=cleanString(submission.title)[:500],
+#                 author=submission.author.name,
+#                 subreddit=submission.subreddit,
+#                 score=submission.score,
+#                 upvote_ratio=submission.upvote_ratio,
+#                 num_comments=submission.num_comments,
+#                 created_utc=datetime.fromtimestamp(int(submission.created_utc)),
+#                 is_original_content=submission.is_original_content,
+#                 over_18=submission.over_18,
+#                 permalink="https://reddit.com" + submission.permalink,
+#                 last_updated=datetime.now()
+#             )
 
-    try:
-        session.query(Post).filter_by(post_id=post_id).update(
-            {
-                'score': score,
-                'num_comments': num_comments,
-                'upvote_ratio': upvote_ratio,
-                'last_updated': datetime.now()
-            })
+#     try:
+#         session.query(Post).filter_by(post_id=post_id).update(
+#             {
+#                 'score': score,
+#                 'num_comments': num_comments,
+#                 'upvote_ratio': upvote_ratio,
+#                 'last_updated': datetime.now()
+#             })
 
-        session.commit()
-        logging.info(f"update_posts: Successfully updated post {post_id}")
-    except SQLAlchemyError as e:
-        session.rollback()
-        logging.error(f"update_posts: Failed to update post {post_id}. Error message: {e}")
-    finally:
-        session.close()
+#         session.commit()
+#         logging.info(f"update_posts: Successfully updated post {post_id}")
+#     except SQLAlchemyError as e:
+#         session.rollback()
+#         logging.error(f"update_posts: Failed to update post {post_id}. Error message: {e}")
+#     finally:
+#         session.close()
 
 
 def insert_inventory(hash, post_id, vid_uuid):
