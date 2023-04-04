@@ -43,7 +43,7 @@ async def on_message(message):
             json_batch = json.loads(message.body)
             print(f"Received: a message")
             await process_dl_period(period, p_id, json_batch)
-
+            print("Completed this batch, waiting for next message...")
             # Acknowledge the message after processing
             await message.ack()
         elif headers['job_type'] != 'dl_period':
