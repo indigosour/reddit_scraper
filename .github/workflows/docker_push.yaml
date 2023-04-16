@@ -29,6 +29,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/indigosour/rscraper_conductor:1.0.${{ github.run_number }}
-            ghcr.io/indigosour/rscraper_conductor:latest
+            ghcr.io/indigosour/rscraper_worker:1.0.${{ github.run_number }}
+            ghcr.io/indigosour/rscraper_worker:latest
           no-cache: true
