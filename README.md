@@ -13,14 +13,14 @@ Collect videos from popular subreddits and upload them to a PeerTube instance fo
 - Cloud storage enabled
 - Deduplicate videos across subreddits to reduce bandwidth and storage usage
 - Allows for command line control
+- Github Actions for CI/CD
+- K8s microservice arcitecture
 
 </br>
 
 ## To do:
 
-- Prepare code to run headless on app server
 - Add IaC to enable quick and simple deployment
-- Package into microservices for efficiency in the cloud
 - Uitilize Azure Functions for serverless design as possible
 
 </br>
